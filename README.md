@@ -74,6 +74,7 @@ The engine is a FastAPI microservice. It connects to PostgreSQL (event history) 
 ## Prerequisites
 
 - **Docker and Docker Compose** — the quick-start stack runs entirely in containers
+- **PostgreSQL `uuid-ossp`** — required. Compose creates it. On managed Postgres, allow-list the extension before the first migration (see [Environment Variables](docs/environment-variables.md)).
 - **`keycloak` hostname** — Keycloak tokens use `https://keycloak:8443` as the issuer, so
   both the engine container and your browser need to resolve the hostname. Add this once:
 

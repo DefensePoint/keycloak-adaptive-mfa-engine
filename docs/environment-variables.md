@@ -13,6 +13,10 @@ All variables are read by `src/core/config/environment.py`. Variables without a 
 | `POSTGRES_DB`       | —       | Database name     |
 | `POSTGRES_SCHEMA`   | —       | Database schema   |
 
+The engine's tables call `uuid_generate_v4()`, so the database needs the `uuid-ossp` extension. The compose stack creates it from `config/keycloak/init-db.sql`. The base Alembic migration also runs `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`.
+
+That `CREATE EXTENSION` is enough on Docker Postgres and on CloudNativePG when the Database object lists `uuid-ossp`. Some managed Postgres products (Azure Database for PostgreSQL Flexible Server via `azure.extensions`) reject `CREATE EXTENSION` until the extension is allow-listed at the server. If you are not using the compose stack, confirm that allow-list before the first migration.
+
 ## Redis
 
 | Variable         | Default                | Description                                                    |
