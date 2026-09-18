@@ -584,3 +584,29 @@ ALLOWED_BLACK_WHITE_LIST_PARAMS = (
     "country_name",  # static list
     "ip_address",  # regex
 )
+
+
+def validate() -> None:
+    missing = [
+        name
+        for name, value in (
+            ("POSTGRES_USER", POSTGRES_USER),
+            ("POSTGRES_PASSWORD", POSTGRES_PASSWORD),
+            ("POSTGRES_HOST", POSTGRES_HOST),
+            ("POSTGRES_PORT", POSTGRES_PORT),
+            ("POSTGRES_DB", DATABASE),
+        )
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            f"AMFA cannot start: required Postgres env vars are unset: {', '.join(missing)}. "
+            "Unset values format into the connection string literally, so the failure looks "
+            "like a connection error to a host named 'None'."
+        )
+    if not OIDC_TRUSTED_BASE_URLS:
+        raise RuntimeError(
+            "AMFA cannot start: OIDC_TRUSTED_BASE_URLS is empty. "
+            "Set it to a comma-separated list of Keycloak base URLs "
+            "(e.g. https://idp.example.com)."
+        )
