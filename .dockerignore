@@ -1,0 +1,38 @@
+# Keep the build context small. `COPY . .` otherwise ships the whole working
+# tree into the image, and .git alone is tens of megabytes of history that the
+# running engine has no use for.
+.git
+.gitignore
+.github
+.gitlab-ci.yml
+
+# Local environment and secrets. These must never be baked into an image that
+# gets distributed to customers.
+.env
+*.env
+!.env.example
+config/keycloak/.env
+
+# Generated IP bundles. The image builds its own, so a local copy would be
+# stale. The seed and staging directories are NOT excluded: the build stage
+# needs them for offline builds (see ipdata/seed/README.md).
+bundle/
+
+# Tests, docs and tooling: useful in the repository, dead weight in the image.
+tests/
+docs/
+*.md
+!NOTICE
+
+# Build and editor noise
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
+data/logs/

@@ -1,0 +1,189 @@
+name: amfa
+
+# Full OSS AMFA stack:
+#   PostgreSQL  — shared DB server (keycloak + adaptive_mfa databases)
+#   Redis       — caching and rate-limiting for the AMFA engine
+#   Keycloak    — identity provider with AMFA SPI + admin-ui JAR
+#   adaptive_auth — AMFA risk-evaluation engine (FastAPI)
+#
+# Usage:
+#   cp .env.example .env   # fill in the required values
+#   docker compose up --build
+#
+# Every realm that uses AMFA additionally needs one-time setup, or the
+# Adaptive MFA admin page will fail with 403/500 (the engine rejects
+# unverifiable tokens):
+#   1. an `adaptive-auth-api` confidential client with service accounts
+#      enabled,
+#   2. an audience mapper (aud=amfa) on that client, and
+#   3. the realm attribute frontendUrl=https://keycloak:8443 so tokens carry
+#      an issuer the engine can trust and reach (both the engine and your
+#      browser reach Keycloak at that same URL — see the `keycloak`
+#      hosts-file entry in the README Prerequisites).
+# See docs/keycloak-setup.md for step-by-step instructions.
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  amfa_net:
+    driver: bridge
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Creates the adaptive_mfa database on first start
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    networks:
+      - amfa_net
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    networks:
+      - amfa_net
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Mailpit (local SMTP sink) ────────────────────────────────────────────────
+  # The imported test-amfa realm configures SMTP as host "mailpit", port 1025
+  # (test-amfa-realm.json), so without this service Keycloak has nowhere to send
+  # the email one-time code. That is not a corner case: a brand-new user has no
+  # login history, so the engine returns a cautious Risk 3 on the very first
+  # attempt, which requires the email step-up. Following the README from a clean
+  # checkout therefore could not complete a first login.
+  #
+  # A sink, not a relay: it accepts everything and delivers nothing, so no mail
+  # can escape a developer machine. Read the codes at http://localhost:8025
+  # (tests/e2e/e2e_common.py::mailpit_latest_code reads the same API).
+  mailpit:
+    image: axllent/mailpit:latest
+    networks:
+      - amfa_net
+    ports:
+      - "1025:1025"   # SMTP, what Keycloak connects to
+      - "8025:8025"   # web UI and API, where you read the code
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Keycloak 26 (community) ──────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.3
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      # Disable hostname verification for local dev
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/certs/tls.crt
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/certs/tls.key
+      # NOTE: `KC_PROXY: edge` used to be set here. That is the Keycloak v1
+      # spelling, REMOVED in 25+; 26.6.3 only logs "Hostname v1 options [proxy]
+      # are still in use" and ignores it, so it was doing nothing. Removed rather
+      # than translated, deliberately: see below.
+      #
+      # Deploying behind a reverse proxy, load balancer or ingress? You MUST set
+      #     KC_PROXY_HEADERS: xforwarded      # or `forwarded` for RFC 7239
+      # or AMFA receives the proxy's address as every user's IP. Six of the
+      # nineteen risk signals then silently stop working, because every user looks
+      # like the same client: geo_loc, country_name, impossible_travel,
+      # geolocation_cluster_label, anonymous_detection, and the distributed-source
+      # half of login_failure.
+      #
+      # It is left UNSET here because this compose file is the local quick-start
+      # and nothing sits in front of Keycloak. Keycloak takes a forwarded address
+      # on trust, so enabling it without a proxy that overwrites the header lets
+      # any client choose the IP its own risk is evaluated against. With the
+      # shipped test realm that is a bypass, not a nuisance: `ip_address` whitelists
+      # 10.0.0.6, so `X-Forwarded-For: 10.0.0.6` would whitelist the attacker.
+      #
+      # To exercise the geolocation and VPN signals locally, set it temporarily and
+      # relax the realm's sslRequired (Keycloak rejects plaintext HTTP once the
+      # client IP is public).
+      # Trust the mkcert root CA so the SPI's loopback HTTPS calls to
+      # https://keycloak:8443 (service-account token fetch) pass TLS verification.
+      KC_TRUSTSTORE_PATHS: /opt/keycloak/certs/rootCA.pem
+      # Disable workflow feature — bug in 26.6.3 dev mode (WorkflowsEventListenerFactory NPE)
+      KC_FEATURES_DISABLED: workflows
+      # Dev logging: keep Keycloak at INFO but log the AMFA SPI at DEBUG.
+      # Use "debug" (blanket) for full Keycloak debug output if needed.
+      KC_LOG_LEVEL: "info,org.keycloak.amfa:debug"
+      # Must match the engine's AMFA_WEBHOOK_AUDIENCE (see .env.example) — the
+      # audience the AMFA event listener stamps onto login-event webhook JWTs.
+      AMFA_WEBHOOK_AUDIENCE: ${AMFA_WEBHOOK_AUDIENCE:-amfa-webhook-event}
+    volumes:
+      # Test realm — auto-imported on first start (--import-realm skips if realm already exists)
+      - ./test-amfa-realm.json:/opt/keycloak/data/import/test-amfa-realm.json:ro
+      # AMFA SPI authenticator extension
+      - ./keycloak-adaptive-mfa.jar:/opt/keycloak/providers/keycloak-adaptive-mfa.jar:ro
+      # Admin-UI JAR with AMFA pages baked in — mounted OVER the built-in
+      # keycloak-admin-ui jar so it replaces (not competes with) the default.
+      - ./keycloak-admin-ui-amfa.jar:/opt/keycloak/providers/keycloak-admin-ui-26.6.3.jar:ro
+      # vavr — functional library required by keycloak-adaptive-mfa SPI (not bundled in Keycloak 26)
+      - ./vavr-0.10.4.jar:/opt/keycloak/providers/vavr-0.10.4.jar:ro
+      # TLS certificate (generated via mkcert — see README Troubleshooting)
+      - ./certs/keycloak.pem:/opt/keycloak/certs/tls.crt:ro
+      - ./certs/keycloak-key.pem:/opt/keycloak/certs/tls.key:ro
+      # mkcert root CA — needed for KC_TRUSTSTORE_PATHS so Java trusts loopback HTTPS
+      - ./certs/rootCA.pem:/opt/keycloak/certs/rootCA.pem:ro
+    networks:
+      - amfa_net
+    ports:
+      - "8443:8443"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── AMFA Engine (FastAPI) ─────────────────────────────────────────────────────
+  adaptive_auth:
+    build:
+      context: ../../
+      dockerfile: Dockerfile
+    ports:
+      - "8095:80"
+    env_file:
+      - .env
+    volumes:
+      - ./certs/rootCA.pem:/opt/amfa/certs/rootCA.pem:ro
+    networks:
+      - amfa_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

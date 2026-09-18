@@ -1,0 +1,10 @@
+# AMFA-enabled community Keycloak image for a production-style deployment.
+# Provider JARs are baked in so `start --optimized` has a matching build.
+FROM quay.io/keycloak/keycloak:26.6.3 AS builder
+COPY --chown=keycloak:root keycloak-adaptive-mfa.jar /opt/keycloak/providers/keycloak-adaptive-mfa.jar
+COPY --chown=keycloak:root keycloak-admin-ui-amfa.jar /opt/keycloak/providers/keycloak-admin-ui-26.6.3.jar
+COPY --chown=keycloak:root vavr-0.10.4.jar /opt/keycloak/providers/vavr-0.10.4.jar
+RUN /opt/keycloak/bin/kc.sh build --health-enabled=true --metrics-enabled=true
+
+FROM quay.io/keycloak/keycloak:26.6.3
+COPY --from=builder /opt/keycloak/ /opt/keycloak/

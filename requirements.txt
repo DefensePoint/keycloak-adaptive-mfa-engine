@@ -1,0 +1,42 @@
+# pip install -r requirements.txt
+wheel
+psycopg2-binary
+pyjwt
+pyjwt[crypto]
+uvicorn==0.21.1
+colorama
+sqlalchemy==2.0.0
+fastapi==0.109.1
+kmodes
+python-dotenv
+ua-parser==0.18.0 
+user-agents==2.2.0
+# MMDB reader for the bundled DB-IP databases. Apache-2.0, and the library
+# only; the data we ship is DB-IP's under CC BY 4.0.
+maxminddb==2.6.3
+numpy==1.23.5
+scipy==1.11.3
+scikit-learn
+uuid
+py_stringmatching
+debugpy
+haversine
+user_agents
+timeoutlib
+fastapi-cprofile
+ipaddress
+asyncpg
+# HTTP clients for the test and load-testing harnesses, not for the engine
+# itself: it reaches the network only for OIDC discovery, via urllib.
+#   requests -> tests/e2e
+#   aiohttp  -> scripts/stress_test.py
+requests
+aiohttp
+concurrent-log-handler
+redis
+async-lru
+pytest
+pytest-asyncio
+pytest-trio
+pytest-mock
+alembic
