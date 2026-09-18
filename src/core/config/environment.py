@@ -53,6 +53,32 @@ OIDC_VERIFY_AUDIENCE = os.getenv("OIDC_VERIFY_AUDIENCE", "true").lower() in ("1"
 # cannot be reshaped into a webhook event, even if it is otherwise signed by a
 # trusted realm.
 WEBHOOK_EXPECTED_AUDIENCE = os.getenv("AMFA_WEBHOOK_AUDIENCE") or "amfa-webhook-event"
+
+
+def validate() -> None:
+    missing = [
+        name
+        for name in (
+            "POSTGRES_USER",
+            "POSTGRES_PASSWORD",
+            "POSTGRES_HOST",
+            "POSTGRES_PORT",
+            "POSTGRES_DB",
+        )
+        if not os.getenv(name)
+    ]
+    if missing:
+        raise RuntimeError(
+            f"AMFA cannot start: required Postgres env vars are unset: {', '.join(missing)}"
+        )
+    if not _csv(os.getenv("OIDC_TRUSTED_BASE_URLS", "")):
+        raise RuntimeError(
+            "AMFA cannot start: OIDC_TRUSTED_BASE_URLS is empty. "
+            "Set it to a comma-separated list of Keycloak base URLs "
+            "(e.g. https://idp.example.com)."
+        )
+
+
 OIDC_CLOCK_SKEW_LEEWAY = int(os.getenv("OIDC_CLOCK_SKEW_LEEWAY", 30))
 # Bounds BOTH how long a signing key is cached (so a rotated/revoked key stops being
 # accepted within this window) AND the stale-key fallback window during a JWKS outage.

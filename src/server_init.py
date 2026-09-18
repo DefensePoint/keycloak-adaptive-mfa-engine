@@ -19,9 +19,11 @@ from src.data.model import Base
 from src.utils.synchronization import enforce_single_execution
 
 from src.core.exception_handler import register_exception_handlers
+from src.core.config.environment import validate
 
 import asyncio
 
+validate()
 
 app = FastAPI()
 
