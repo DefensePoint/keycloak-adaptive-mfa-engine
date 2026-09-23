@@ -1,0 +1,6 @@
+data
+# Provider JARs are fetched by the compose `providers` service and by
+# Dockerfile.keycloak, rather than vendored. See config/keycloak/docker-compose.yml.
+vavr-*.jar
+keycloak-adaptive-mfa.jar
+keycloak-admin-ui-amfa.jar

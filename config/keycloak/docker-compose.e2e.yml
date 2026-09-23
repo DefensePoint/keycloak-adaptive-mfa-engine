@@ -1,0 +1,27 @@
+# Test-only overlay for the signal-matrix E2E suite.
+#
+#   docker compose \
+#     -f config/keycloak/docker-compose.yml \
+#     -f config/keycloak/docker-compose.e2e.yml up -d
+#
+# No -p flag: the base file declares `name: amfa`, so the containers are amfa-* and
+# the suite finds them by that name without being told where it was started from.
+#
+# Six of the nineteen risk signals are derived from the client IP (ip_address,
+# country_name, geo_loc, anonymous_detection, impossible_travel and
+# geolocation_cluster_label). Driving them from a test means choosing the IP that
+# Keycloak reports, which means Keycloak has to trust X-Forwarded-For.
+#
+# The base compose deliberately leaves this unset, because trusting a forwarded
+# address with no proxy in front lets any client pick the IP its own risk is
+# evaluated against, and the shipped realm allow-lists 10.0.0.6. That reasoning is
+# unchanged. This overlay exists so the suite can opt in explicitly, on a local
+# stack, rather than the default becoming unsafe for everyone.
+#
+# The suite also relaxes the realm's sslRequired for the duration of a run, because
+# Keycloak refuses plaintext HTTP once the client IP is public, and restores it
+# afterwards.
+services:
+  keycloak:
+    environment:
+      KC_PROXY_HEADERS: xforwarded
