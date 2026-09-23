@@ -6,7 +6,7 @@ pyjwt[crypto]
 uvicorn==0.53.0
 colorama
 sqlalchemy==2.0.54
-fastapi==0.109.1
+fastapi==0.141.1
 kmodes
 python-dotenv
 ua-parser==1.0.2 
