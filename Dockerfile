@@ -15,7 +15,7 @@
 #
 # This stage needs network access. Only the *runtime* is air-gapped: an isolated
 # site consumes a pre-built image rather than building one in place.
-FROM python:3.11 AS ipdata
+FROM python:3.14 AS ipdata
 
 WORKDIR /build
 RUN pip install --no-cache-dir maxminddb
@@ -36,7 +36,7 @@ RUN python scripts/build_ip_bundle.py --out /ipdata ${IP_BUNDLE_ARGS}
 
 
 # --- engine -------------------------------------------------------------------
-FROM python:3.11 AS build
+FROM python:3.14 AS build
 
 WORKDIR /app
 
