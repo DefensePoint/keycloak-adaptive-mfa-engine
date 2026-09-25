@@ -1,0 +1,98 @@
+# Nightly KICS IaC scan. Schedule and workflow_dispatch only.
+# Secrets: REDLENS_API_URL, REDLENS_API_KEY, REDLENS_WORKSPACE_ID,
+# REDLENS_PROJECT_ID, HARBOR_USERNAME, HARBOR_PASSWORD.
+
+name: KICS Scan
+
+on:
+  schedule:
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REDLENS_CLI_IMAGE: registry.defensepoint.com/redlens/redlens-cli:v1.8.0
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: KICS scan
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          # kics exits 40/50 when findings exist. The report is the result.
+          # -w /src is required. The image's workdir is /app/bin, and without
+          # this every file_name is relative to that directory
+          # (../../src/...). RedLens rejects a path that escapes the repository.
+          docker run --rm \
+            -v "$PWD:/src:ro" \
+            -v "$PWD/reports:/out" \
+            -w /src \
+            checkmarx/kics:latest \
+            scan -p . --report-formats json -o /out \
+            --output-name kics-results --no-progress || true
+          test -s reports/kics-results.json
+          python3 -c 'import json,sys
+          d=json.load(open(sys.argv[1]))
+          q=d.get("queries")
+          assert isinstance(q, list), "no queries array"
+          bad=[]
+          for query in q:
+            for f in query.get("files") or []:
+              p=str(f.get("file_name") or "")
+              if p.startswith("/") or p.startswith("..") or "/../" in p:
+                bad.append(p)
+          assert not bad, "paths are not repo-relative: %s" % bad[:3]
+          print("kics:", len(q), "queries")' reports/kics-results.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kics-report
+          path: reports/kics-results.json
+          if-no-files-found: error
+
+  ingest:
+    needs: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kics-report
+          path: reports
+
+      - name: Ingest KICS report
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+          REDLENS_API_URL: ${{ secrets.REDLENS_API_URL }}
+          REDLENS_API_KEY: ${{ secrets.REDLENS_API_KEY }}
+          REDLENS_WORKSPACE_ID: ${{ secrets.REDLENS_WORKSPACE_ID }}
+          REDLENS_PROJECT_ID: ${{ secrets.REDLENS_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          for name in HARBOR_USERNAME HARBOR_PASSWORD REDLENS_API_URL REDLENS_API_KEY REDLENS_WORKSPACE_ID REDLENS_PROJECT_ID; do
+            test -n "${!name}" || { echo "missing secret $name"; exit 1; }
+          done
+          echo "$HARBOR_PASSWORD" | docker login registry.defensepoint.com -u "$HARBOR_USERNAME" --password-stdin
+          docker pull --quiet "$REDLENS_CLI_IMAGE"
+          run_cli() {
+            timeout 180 docker run --rm \
+              -v "$PWD:$PWD" \
+              -w "$PWD" \
+              -e REDLENS_API_URL -e REDLENS_API_KEY \
+              -e REDLENS_WORKSPACE_ID -e REDLENS_PROJECT_ID \
+              "$REDLENS_CLI_IMAGE" "$@"
+          }
+          run_cli whoami --check
+          # A KICS report does not name the repository. Declare it here.
+          run_cli scans upload kics reports/kics-results.json \
+            --repo "${{ github.server_url }}/${{ github.repository }}"

@@ -1,0 +1,124 @@
+# Nightly Opengrep SAST. Schedule and workflow_dispatch only.
+# Secrets: REDLENS_API_URL, REDLENS_API_KEY, REDLENS_WORKSPACE_ID,
+# REDLENS_PROJECT_ID, HARBOR_USERNAME, HARBOR_PASSWORD.
+
+name: Opengrep Scan
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  OPENGREP_VERSION: v1.27.1
+  LC_ALL: C.UTF-8
+  LANG: C.UTF-8
+  REDLENS_CLI_IMAGE: registry.defensepoint.com/redlens/redlens-cli:v1.8.0
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Opengrep scan
+        run: |
+          set -euo pipefail
+          mkdir -p reports "$RUNNER_TEMP/bin"
+          curl -sSfL -o "$RUNNER_TEMP/bin/opengrep" \
+            "https://github.com/opengrep/opengrep/releases/download/${OPENGREP_VERSION}/opengrep_manylinux_x86"
+          chmod +x "$RUNNER_TEMP/bin/opengrep"
+          "$RUNNER_TEMP/bin/opengrep" --version
+
+          rm -rf /tmp/opengrep-rules
+          git clone --depth 1 --quiet https://github.com/opengrep/opengrep-rules /tmp/opengrep-rules
+
+          # Rule directories only. The rules repo root fails schema validation
+          # and aborts the scan with zero results. Security and secrets only:
+          # whole language trees pull in lint rules that swamp the findings.
+          roots=()
+          for lang in python dockerfile yaml bash generic; do
+            if [ -d "/tmp/opengrep-rules/$lang" ]; then
+              roots+=("/tmp/opengrep-rules/$lang")
+            fi
+          done
+          test "${#roots[@]}" -gt 0
+          find "${roots[@]}" -type d \( -name security -o -name secrets \) \
+            > /tmp/opengrep-rule-dirs.txt
+          test -s /tmp/opengrep-rule-dirs.txt
+          configs=()
+          while IFS= read -r dir; do
+            configs+=(--config "$dir")
+          done < /tmp/opengrep-rule-dirs.txt
+
+          # --no-rewrite-rule-ids keeps check ids stable. Opengrep otherwise
+          # prefixes them with the rules checkout path, and that path is part
+          # of the finding fingerprint.
+          # The target is ".". An absolute target makes every path absolute,
+          # and RedLens refuses those reports.
+          "$RUNNER_TEMP/bin/opengrep" scan "${configs[@]}" \
+            --no-rewrite-rule-ids \
+            --json --json-output=reports/opengrep-results.json \
+            . || true
+
+          test -s reports/opengrep-results.json
+          python3 -c 'import json,sys
+          d=json.load(open(sys.argv[1]))
+          r=d.get("results")
+          assert isinstance(r, list), "no results array"
+          bad=[x.get("path") for x in r if str(x.get("path","")).startswith("/")]
+          assert not bad, "absolute paths in report: %s" % bad[:3]
+          errs=d.get("errors") or []
+          assert not errs, "opengrep reported errors: %s" % errs[:2]
+          print("opengrep:", len(r), "findings")' reports/opengrep-results.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opengrep-report
+          path: reports/opengrep-results.json
+          if-no-files-found: error
+
+  ingest:
+    needs: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: opengrep-report
+          path: reports
+
+      - name: Ingest Opengrep report
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+          REDLENS_API_URL: ${{ secrets.REDLENS_API_URL }}
+          REDLENS_API_KEY: ${{ secrets.REDLENS_API_KEY }}
+          REDLENS_WORKSPACE_ID: ${{ secrets.REDLENS_WORKSPACE_ID }}
+          REDLENS_PROJECT_ID: ${{ secrets.REDLENS_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          for name in HARBOR_USERNAME HARBOR_PASSWORD REDLENS_API_URL REDLENS_API_KEY REDLENS_WORKSPACE_ID REDLENS_PROJECT_ID; do
+            test -n "${!name}" || { echo "missing secret $name"; exit 1; }
+          done
+          echo "$HARBOR_PASSWORD" | docker login registry.defensepoint.com -u "$HARBOR_USERNAME" --password-stdin
+          docker pull --quiet "$REDLENS_CLI_IMAGE"
+          run_cli() {
+            timeout 180 docker run --rm \
+              -v "$PWD:$PWD" \
+              -w "$PWD" \
+              -e REDLENS_API_URL -e REDLENS_API_KEY \
+              -e REDLENS_WORKSPACE_ID -e REDLENS_PROJECT_ID \
+              "$REDLENS_CLI_IMAGE" "$@"
+          }
+          run_cli whoami --check
+          # Declared explicitly. The CLI does not read GITHUB_*, and a checkout
+          # remote can carry a token.
+          run_cli scans upload opengrep reports/opengrep-results.json \
+            --repo "${{ github.server_url }}/${{ github.repository }}"
