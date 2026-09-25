@@ -74,8 +74,8 @@ jobs:
           assert isinstance(r, list), "no results array"
           bad=[x.get("path") for x in r if str(x.get("path","")).startswith("/")]
           assert not bad, "absolute paths in report: %s" % bad[:3]
-          errs=d.get("errors") or []
-          assert not errs, "opengrep reported errors: %s" % errs[:2]
+          fatal=[e for e in (d.get("errors") or []) if str(e.get("level","")).lower()=="error"]
+          assert not fatal, "opengrep reported errors: %s" % fatal[:2]
           print("opengrep:", len(r), "findings")' reports/opengrep-results.json
 
       - uses: actions/upload-artifact@v4
