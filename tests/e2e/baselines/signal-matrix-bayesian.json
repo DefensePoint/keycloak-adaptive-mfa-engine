@@ -1,0 +1,306 @@
+{
+ "run": {
+  "config_fingerprint": "sha256:03922a0e514880dda4d8deb48bd7a99d",
+  "scoring_mode": "bayesian"
+ },
+ "rows": [
+  {
+   "id": "B00",
+   "delta": "(baseline)",
+   "note": "trained user, nothing changed. Every other row is measured from here",
+   "risk": 1,
+   "login_completed": true,
+   "rule": "bayesian",
+   "signals": [],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 0% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 0% falls in Risk 1. | Signals building trust (lowering risk): network / IP address, device, operating system and browser language."
+  },
+  {
+   "id": "S01",
+   "delta": "user_agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:130.0) Gecko/20100101 Firefox/130.0",
+   "note": "browser, weight 1",
+   "risk": 1,
+   "login_completed": true,
+   "rule": "bayesian",
+   "signals": [
+    "browser",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 5% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 5% falls in Risk 1. | Signals pushing risk up: usual device/behaviour pattern and browser. | Signals building trust (lowering risk): network / IP address, device, operating system and browser language."
+  },
+  {
+   "id": "S02",
+   "delta": "user_agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+   "note": "device and operating system, weight 2 each",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "bayesian",
+   "signals": [
+    "device",
+    "operating system",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "Bayesian model estimated a 53% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 53% falls in Risk 2. | Signals pushing risk up: usual device/behaviour pattern, device and operating system. | Signals building trust (lowering risk): network / IP address, browser language, usual sign-in location pattern and device / network familiarity."
+  },
+  {
+   "id": "S03",
+   "delta": "screen_res=1024x768",
+   "note": "screen resolution, weight 1",
+   "risk": 1,
+   "login_completed": true,
+   "rule": "bayesian",
+   "signals": [
+    "screen size",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 5% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 5% falls in Risk 1. | Signals pushing risk up: usual device/behaviour pattern and screen size. | Signals building trust (lowering risk): network / IP address, device, operating system and browser language."
+  },
+  {
+   "id": "S04",
+   "delta": "accept_language=fr-FR,fr;q=0.9",
+   "note": "system language, weight 2",
+   "risk": 1,
+   "login_completed": true,
+   "rule": "bayesian",
+   "signals": [
+    "browser language",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 13% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 13% falls in Risk 1. | Signals pushing risk up: usual device/behaviour pattern and browser language. | Signals building trust (lowering risk): network / IP address, device, operating system and usual sign-in location pattern."
+  },
+  {
+   "id": "S05",
+   "delta": "xff=212.51.144.9",
+   "note": "ip address only, same city so geo is unchanged",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "bayesian",
+   "signals": [
+    "device / network familiarity",
+    "network / IP address",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "Bayesian model estimated a 48% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 48% falls in Risk 2. | Signals pushing risk up: usual device/behaviour pattern, network / IP address and device / network familiarity. | Signals building trust (lowering risk): device, operating system, browser language and usual sign-in location pattern."
+  },
+  {
+   "id": "S06",
+   "delta": "xff=62.2.0.1",
+   "note": "ip address, different city in the same country",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "bayesian",
+   "signals": [
+    "device / network familiarity",
+    "network / IP address",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "Bayesian model estimated a 48% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 48% falls in Risk 2. | Signals pushing risk up: usual device/behaviour pattern, network / IP address and device / network familiarity. | Signals building trust (lowering risk): device, operating system, browser language and usual sign-in location pattern."
+  },
+  {
+   "id": "S07",
+   "delta": "xff=193.99.144.80",
+   "note": "ip address and country, CH to DE",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "bayesian",
+   "signals": [
+    "country name",
+    "network / IP address",
+    "usual device/behaviour pattern",
+    "usual sign-in location pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 97% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 97% falls in Risk 4. | Signals pushing risk up: usual device/behaviour pattern, network / IP address, country name and usual sign-in location pattern. | Signals building trust (lowering risk): device, operating system, browser language and the application being signed in to."
+  },
+  {
+   "id": "S08",
+   "delta": "xff=8.8.8.8",
+   "note": "hosting address: datacenter label, is_vpn stays false by default",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "bayesian",
+   "signals": [
+    "country name",
+    "network / IP address",
+    "usual device/behaviour pattern",
+    "usual sign-in location pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 97% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 97% falls in Risk 4. | Signals pushing risk up: usual device/behaviour pattern, network / IP address, country name and usual sign-in location pattern. | Signals building trust (lowering risk): device, operating system, browser language and the application being signed in to."
+  },
+  {
+   "id": "S09",
+   "delta": "(baseline)",
+   "note": "time of day, weight 3. The only clean single-signal row: shifting history changes no context field, so the cluster does not move",
+   "risk": 1,
+   "login_completed": true,
+   "rule": "bayesian",
+   "signals": [
+    "time of day"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 2% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 2% falls in Risk 1. | Signals pushing risk up: time of day. | Signals building trust (lowering risk): network / IP address, device, operating system and browser language."
+  },
+  {
+   "id": "S10",
+   "delta": "(baseline)",
+   "note": "dormant account: history older than the 40 day threshold",
+   "risk": 1,
+   "login_completed": true,
+   "rule": "bayesian",
+   "signals": [
+    "long-dormant account"
+   ],
+   "step_up": "screenRes,password",
+   "why": "This account had not logged in for at least 40 days, which this realm treats as dormant. | Bayesian model estimated a 1% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 1% falls in Risk 1. | Signals pushing risk up: long-dormant account. | Signals building trust (lowering risk): network / IP address, device, operating system and browser language."
+  },
+  {
+   "id": "A01",
+   "delta": "xff=171.25.193.25",
+   "note": "real Tor exit. Five signals move, one short of the hazard threshold of 6, so this reaches Risk 3 by weight rather than by escalation",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "bayesian",
+   "signals": [
+    "country name",
+    "network / IP address",
+    "usual device/behaviour pattern",
+    "usual sign-in location pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 99% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 99% falls in Risk 4. | Signals pushing risk up: usual device/behaviour pattern, network / IP address, country name and usual sign-in location pattern. | Signals building trust (lowering risk): device, operating system, browser language and the application being signed in to."
+  },
+  {
+   "id": "A02",
+   "delta": "xff=171.25.193.25",
+   "note": "the takeover shape: Tor plus an unusual hour is 6 signals, which trips hazard, with every device field left identical. Measured, no familiarity adjustment follows, so the hazard floor is not exercised here either; see the known limits in signal-matrix-plan.md",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "bayesian",
+   "signals": [
+    "country name",
+    "network / IP address",
+    "time of day",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 100% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 100% falls in Risk 4. | Signals pushing risk up: time of day, usual device/behaviour pattern, network / IP address and country name. | Signals building trust (lowering risk): device, operating system, browser language and the application being signed in to."
+  },
+  {
+   "id": "D01",
+   "delta": "xff=203.0.113.9",
+   "note": "ip address on the deny list. A hard override to the rejection level, regardless of score or familiarity",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "deny-list",
+   "signals": [
+    "country name",
+    "device / network familiarity",
+    "network / IP address",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 83% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 83% falls in Risk 3. | Signals pushing risk up: usual device/behaviour pattern, network / IP address, country name and device / network familiarity. | Signals building trust (lowering risk): device, operating system, browser language and usual sign-in location pattern. | A denylisted attribute matched (network / IP address); this is a hard override that forces Risk 4 regardless of other signals."
+  },
+  {
+   "id": "D02",
+   "delta": "xff=1.201.0.1",
+   "note": "country KR on the deny list",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "deny-list",
+   "signals": [
+    "country name",
+    "network / IP address",
+    "usual device/behaviour pattern",
+    "usual sign-in location pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 97% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 97% falls in Risk 4. | Signals pushing risk up: usual device/behaviour pattern, network / IP address, country name and usual sign-in location pattern. | Signals building trust (lowering risk): device, operating system, browser language and the application being signed in to. | A denylisted attribute matched (country name); this is a hard override that forces Risk 4 regardless of other signals."
+  },
+  {
+   "id": "W01",
+   "delta": "xff=203.0.113.7",
+   "note": "ip address on the allow list: caps the level at 2 rather than forcing anything",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "allow-list",
+   "signals": [
+    "country name",
+    "device / network familiarity",
+    "network / IP address",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "Bayesian model estimated a 83% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 83% falls in Risk 3. | Signals pushing risk up: usual device/behaviour pattern, network / IP address, country name and device / network familiarity. | Signals building trust (lowering risk): device, operating system, browser language and usual sign-in location pattern. | An allowlisted attribute matched (network / IP address); capping the risk at Risk 2 (down from Risk 3)."
+  },
+  {
+   "id": "H01",
+   "delta": "user_agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36, screen_res=800x600, accept_language=ja-JP,ja;q=0.9, xff=193.99.144.80",
+   "note": "many signals at once. Hazard forces Risk 3 and holds it against a familiar device",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "bayesian",
+   "signals": [
+    "device",
+    "network / IP address",
+    "time of day",
+    "usual device/behaviour pattern"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 100% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 100% falls in Risk 4. | Signals pushing risk up: time of day, usual device/behaviour pattern, network / IP address and device. | Signals building trust (lowering risk): the application being signed in to and browser."
+  },
+  {
+   "id": "E01",
+   "delta": "(baseline)",
+   "note": "the user changes their own password, then signs in. User-initiated because an admin reset is deliberately not forwarded to the engine",
+   "risk": 1,
+   "login_completed": true,
+   "rule": "bayesian",
+   "signals": [
+    "recent password/credential change"
+   ],
+   "step_up": "screenRes,password",
+   "why": "Bayesian model estimated a 2% chance this login is fraudulent. The risk bands are <30%=Risk 1, <60%=Risk 2, <85%=Risk 3, else Risk 4, so 2% falls in Risk 1. | Signals pushing risk up: recent password/credential change. | Signals building trust (lowering risk): network / IP address, device, operating system and browser language."
+  },
+  {
+   "id": "G01",
+   "delta": "(baseline)",
+   "note": "untrained user: the gate short-circuits to a cautious level before any signal is weighed",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "history-gate",
+   "signals": [],
+   "step_up": "screenRes,password,email-otp",
+   "why": "Only 0 successful login(s) are on record (at least 4 are needed to profile this account), so there is not enough history to judge it. Applying a cautious Risk 3 until more history builds up."
+  },
+  {
+   "id": "G02",
+   "delta": "user_agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36, xff=193.99.144.80",
+   "note": "untrained and several signals changed: still the gate, proving it runs before scoring",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "history-gate",
+   "signals": [],
+   "step_up": "screenRes,password,email-otp",
+   "why": "Only 0 successful login(s) are on record (at least 4 are needed to profile this account), so there is not enough history to judge it. Applying a cautious Risk 3 until more history builds up."
+  },
+  {
+   "id": "G03",
+   "delta": "xff=203.0.113.9",
+   "note": "untrained plus a denied address: the deny list still escalates",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "deny-list",
+   "signals": [],
+   "step_up": "screenRes,password",
+   "why": "Only 0 successful login(s) are on record (at least 4 are needed to profile this account), so there is not enough history to judge it. Applying a cautious Risk 3 until more history builds up. | A denylisted attribute matched on this login (network / IP address); raising to Risk 4."
+  }
+ ]
+}

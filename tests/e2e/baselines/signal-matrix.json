@@ -1,0 +1,326 @@
+{
+ "run": {
+  "config_fingerprint": "sha256:fa1f2c0d7816e0beff80196631daca91",
+  "scoring_mode": "weight"
+ },
+ "rows": [
+  {
+   "id": "B00",
+   "delta": "(baseline)",
+   "note": "trained user, nothing changed. Every other row is measured from here",
+   "risk": 1,
+   "login_completed": true,
+   "rule": "clean",
+   "signals": [],
+   "step_up": "screenRes,password",
+   "why": "Clean login \u2014 nothing changed from this user's norm, and risk is already at the minimum; staying at Risk 1."
+  },
+  {
+   "id": "S01",
+   "delta": "user_agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:130.0) Gecko/20100101 Firefox/130.0",
+   "note": "browser, weight 1",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "weight",
+   "signals": [
+    "browser",
+    "event_cluster_label"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "2 signal(s) differ from this user's norm: browser and usual device/behaviour pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 2."
+  },
+  {
+   "id": "S02",
+   "delta": "user_agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+   "note": "device and operating system, weight 2 each",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "weight",
+   "signals": [
+    "device",
+    "event_cluster_label",
+    "operating_system"
+   ],
+   "step_up": "screenRes,password,email-otp",
+   "why": "3 signal(s) differ from this user's norm: device, operating system and usual device/behaviour pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 3."
+  },
+  {
+   "id": "S03",
+   "delta": "screen_res=1024x768",
+   "note": "screen resolution, weight 1",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "weight",
+   "signals": [
+    "event_cluster_label",
+    "screen_resolution"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "2 signal(s) differ from this user's norm: screen size and usual device/behaviour pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 2."
+  },
+  {
+   "id": "S04",
+   "delta": "accept_language=fr-FR,fr;q=0.9",
+   "note": "system language, weight 2",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "weight",
+   "signals": [
+    "event_cluster_label",
+    "system_language"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "2 signal(s) differ from this user's norm: browser language and usual device/behaviour pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 2."
+  },
+  {
+   "id": "S05",
+   "delta": "xff=212.51.144.9",
+   "note": "ip address only, same city so geo is unchanged",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "familiarity",
+   "signals": [
+    "event_cluster_label",
+    "ip_address"
+   ],
+   "step_up": "screenRes,password,email-otp",
+   "why": "2 signal(s) differ from this user's norm: network / IP address and usual device/behaviour pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 2. | This device/network is largely unfamiliar (familiarity 0.20, very low); raising from Risk 2 to Risk 3."
+  },
+  {
+   "id": "S06",
+   "delta": "xff=62.2.0.1",
+   "note": "ip address, different city in the same country",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "familiarity",
+   "signals": [
+    "event_cluster_label",
+    "ip_address"
+   ],
+   "step_up": "screenRes,password,email-otp",
+   "why": "2 signal(s) differ from this user's norm: network / IP address and usual device/behaviour pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 2. | This device/network is largely unfamiliar (familiarity 0.20, very low); raising from Risk 2 to Risk 3."
+  },
+  {
+   "id": "S07",
+   "delta": "xff=193.99.144.80",
+   "note": "ip address and country, CH to DE",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "weight",
+   "signals": [
+    "country_name",
+    "event_cluster_label",
+    "geolocation_cluster_label",
+    "ip_address"
+   ],
+   "step_up": "screenRes,password,email-otp",
+   "why": "4 signal(s) differ from this user's norm: country name, network / IP address, usual device/behaviour pattern and usual sign-in location pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 3."
+  },
+  {
+   "id": "S08",
+   "delta": "xff=8.8.8.8",
+   "note": "hosting address: datacenter label, is_vpn stays false by default",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "weight",
+   "signals": [
+    "country_name",
+    "event_cluster_label",
+    "geolocation_cluster_label",
+    "ip_address"
+   ],
+   "step_up": "screenRes,password,email-otp",
+   "why": "4 signal(s) differ from this user's norm: country name, network / IP address, usual device/behaviour pattern and usual sign-in location pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 3."
+  },
+  {
+   "id": "S09",
+   "delta": "(baseline)",
+   "note": "time of day, weight 3. The only clean single-signal row: shifting history changes no context field, so the cluster does not move",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "weight",
+   "signals": [
+    "date_time"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "1 signal(s) differ from this user's norm: time of day. | Weighing the changed signals by their configured importance gives a tentative Risk 2."
+  },
+  {
+   "id": "S10",
+   "delta": "(baseline)",
+   "note": "dormant account: history older than the 40 day threshold",
+   "risk": 1,
+   "login_completed": true,
+   "rule": "weight",
+   "signals": [
+    "inactive_account"
+   ],
+   "step_up": "screenRes,password",
+   "why": "This account had not logged in for at least 40 days, which this realm treats as dormant. | 1 signal(s) differ from this user's norm: long-dormant account. | Weighing the changed signals by their configured importance gives a tentative Risk 1."
+  },
+  {
+   "id": "A01",
+   "delta": "xff=171.25.193.25",
+   "note": "real Tor exit. Five signals move, one short of the hazard threshold of 6, so this reaches Risk 3 by weight rather than by escalation",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "weight",
+   "signals": [
+    "anonymous_detection",
+    "country_name",
+    "event_cluster_label",
+    "geolocation_cluster_label",
+    "ip_address"
+   ],
+   "step_up": "screenRes,password,email-otp",
+   "why": "5 signal(s) differ from this user's norm: anonymised network (VPN/proxy/Tor), country name, network / IP address, usual device/behaviour pattern and usual sign-in location pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 3."
+  },
+  {
+   "id": "A02",
+   "delta": "xff=171.25.193.25",
+   "note": "the takeover shape: Tor plus an unusual hour is 6 signals, which trips hazard, with every device field left identical. Measured, no familiarity adjustment follows, so the hazard floor is not exercised here either; see the known limits in signal-matrix-plan.md",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "hazard",
+   "signals": [
+    "anonymous_detection",
+    "country_name",
+    "date_time",
+    "event_cluster_label",
+    "geolocation_cluster_label",
+    "ip_address"
+   ],
+   "step_up": "screenRes,password,email-otp",
+   "why": "6 signal(s) differ from this user's norm: anonymised network (VPN/proxy/Tor), country name, network / IP address, time of day, usual device/behaviour pattern and usual sign-in location pattern. | 6 signals changed at once, which is a very unfamiliar context; forcing Risk 3 (would be Risk 4 with 2+ recent failed attempts; there were 0)."
+  },
+  {
+   "id": "D01",
+   "delta": "xff=203.0.113.9",
+   "note": "ip address on the deny list. A hard override to the rejection level, regardless of score or familiarity",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "deny-list",
+   "signals": [
+    "country_name",
+    "event_cluster_label",
+    "ip_address"
+   ],
+   "step_up": "screenRes,password",
+   "why": "3 signal(s) differ from this user's norm: country name, network / IP address and usual device/behaviour pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 3. | A denylisted attribute matched (network / IP address); this is a hard override that forces Risk 4 regardless of other signals."
+  },
+  {
+   "id": "D02",
+   "delta": "xff=1.201.0.1",
+   "note": "country KR on the deny list",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "deny-list",
+   "signals": [
+    "country_name",
+    "event_cluster_label",
+    "geolocation_cluster_label",
+    "ip_address"
+   ],
+   "step_up": "screenRes,password",
+   "why": "4 signal(s) differ from this user's norm: country name, network / IP address, usual device/behaviour pattern and usual sign-in location pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 3. | A denylisted attribute matched (country name); this is a hard override that forces Risk 4 regardless of other signals."
+  },
+  {
+   "id": "W01",
+   "delta": "xff=203.0.113.7",
+   "note": "ip address on the allow list: caps the level at 2 rather than forcing anything",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "allow-list",
+   "signals": [
+    "country_name",
+    "event_cluster_label",
+    "ip_address"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "3 signal(s) differ from this user's norm: country name, network / IP address and usual device/behaviour pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 3. | An allowlisted attribute matched (network / IP address); capping the risk at Risk 2 (down from Risk 3)."
+  },
+  {
+   "id": "H01",
+   "delta": "user_agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36, screen_res=800x600, accept_language=ja-JP,ja;q=0.9, xff=193.99.144.80",
+   "note": "many signals at once. Hazard forces Risk 3 and holds it against a familiar device",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "hazard",
+   "signals": [
+    "country_name",
+    "date_time",
+    "device",
+    "event_cluster_label",
+    "geolocation_cluster_label",
+    "ip_address",
+    "operating_system",
+    "screen_resolution",
+    "system_language"
+   ],
+   "step_up": "screenRes,password,email-otp",
+   "why": "9 signal(s) differ from this user's norm: browser language, country name, device, network / IP address, operating system, screen size, time of day, usual device/behaviour pattern and usual sign-in location pattern. | 9 signals changed at once, which is a very unfamiliar context; forcing Risk 3 (would be Risk 4 with 2+ recent failed attempts; there were 0)."
+  },
+  {
+   "id": "C01",
+   "delta": "(baseline)",
+   "note": "sessions from two other addresses, plus this login's own, reaching the distinct-address threshold the engine reads as credential sharing",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "weight",
+   "signals": [
+    "concurrent_session",
+    "impossible_travel",
+    "ip_address",
+    "time_interval"
+   ],
+   "step_up": "screenRes,password,email-otp",
+   "why": "4 signal(s) differ from this user's norm: concurrent active sessions, impossible travel between logins, network / IP address and time-between-logins pattern. | Weighing the changed signals by their configured importance gives a tentative Risk 3."
+  },
+  {
+   "id": "E01",
+   "delta": "(baseline)",
+   "note": "the user changes their own password, then signs in. User-initiated because an admin reset is deliberately not forwarded to the engine",
+   "risk": 2,
+   "login_completed": false,
+   "rule": "weight",
+   "signals": [
+    "recent_account_change"
+   ],
+   "step_up": "screenRes,password,totp-required",
+   "why": "1 signal(s) differ from this user's norm: recent password/credential change. | Weighing the changed signals by their configured importance gives a tentative Risk 2."
+  },
+  {
+   "id": "G01",
+   "delta": "(baseline)",
+   "note": "untrained user: the gate short-circuits to a cautious level before any signal is weighed",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "history-gate",
+   "signals": [],
+   "step_up": "screenRes,password,email-otp",
+   "why": "Only 0 successful login(s) are on record (at least 4 are needed to profile this account), so there is not enough history to judge it. Applying a cautious Risk 3 until more history builds up."
+  },
+  {
+   "id": "G02",
+   "delta": "user_agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36, xff=193.99.144.80",
+   "note": "untrained and several signals changed: still the gate, proving it runs before scoring",
+   "risk": 3,
+   "login_completed": true,
+   "rule": "history-gate",
+   "signals": [],
+   "step_up": "screenRes,password,email-otp",
+   "why": "Only 0 successful login(s) are on record (at least 4 are needed to profile this account), so there is not enough history to judge it. Applying a cautious Risk 3 until more history builds up."
+  },
+  {
+   "id": "G03",
+   "delta": "xff=203.0.113.9",
+   "note": "untrained plus a denied address: the deny list still escalates",
+   "risk": 4,
+   "login_completed": false,
+   "rule": "deny-list",
+   "signals": [],
+   "step_up": "screenRes,password",
+   "why": "Only 0 successful login(s) are on record (at least 4 are needed to profile this account), so there is not enough history to judge it. Applying a cautious Risk 3 until more history builds up. | A denylisted attribute matched on this login (network / IP address); raising to Risk 4."
+  }
+ ]
+}
