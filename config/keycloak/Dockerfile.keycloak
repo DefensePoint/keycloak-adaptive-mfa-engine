@@ -1,0 +1,58 @@
+# AMFA-enabled community Keycloak image for a production-style deployment.
+# Provider JARs are baked in so `start --optimized` has a matching build.
+
+# No provider JAR is vendored in this repository. All three are fetched from the
+# release or registry that publishes them, and each digest is verified: a bad
+# mirror, a truncated download or a republished artifact fails the build here
+# rather than surfacing as a NoClassDefFoundError inside Keycloak.
+#
+# Fetched in a separate stage because the Keycloak image runs as a non-root user
+# and ships no curl.
+#
+# The two DefensePoint JARs are not byte-reproducible (Maven and `jar` embed
+# timestamps), so these digests belong to the exact published assets. Rebuilding
+# a JAR produces different bytes; re-publish the archived asset instead, or these
+# values have to change with it.
+# The three base URLs are build args so an air-gapped or mirrored build can point
+# them at an internal artifact store without patching this file:
+#   docker build -f Dockerfile.keycloak \
+#     --build-arg SPI_BASE_URL=https://nexus.internal/raw/amfa \
+#     --build-arg ADMIN_UI_BASE_URL=https://nexus.internal/raw/amfa \
+#     --build-arg MAVEN_BASE_URL=https://nexus.internal/repository/maven-central \
+#     .
+# The digests are unchanged by the source, so a mirror serving different bytes
+# still fails the build.
+FROM curlimages/curl:8.22.0 AS providers
+# The SPI and admin-ui release independently, so each pins its own version.
+ARG SPI_VERSION=v1.0.1
+ARG ADMIN_UI_VERSION=v1.0.1
+ARG SPI_BASE_URL=https://github.com/DefensePoint/keycloak-adaptive-mfa/releases/download
+ARG ADMIN_UI_BASE_URL=https://github.com/DefensePoint/keycloak-adaptive-mfa-admin-ui/releases/download
+ARG MAVEN_BASE_URL=https://repo1.maven.org/maven2
+ARG SPI_SHA256=fefac397dc45726ea8ab727f33625acba99930ae8c392f2686c1f9561c04d8fd
+ARG ADMIN_UI_SHA256=4aecc5de6281feca6c2622a601860550cdaa0446da55732f5e6f2a227363eeef
+# vavr must match the version the SPI release was built against: SPI v1.0.1
+# is compiled and tested against vavr 1.0.1, so the two move together.
+ARG VAVR_VERSION=1.0.1
+ARG VAVR_SHA256=f9ea1043ad66dbd8e0c4dd7b7a9cdce5bf2d86fab1ce33aace1ad4d56bd1270b
+RUN set -eu; \
+    curl -fsSL -o /tmp/keycloak-adaptive-mfa.jar \
+      "${SPI_BASE_URL}/${SPI_VERSION}/keycloak-adaptive-mfa.jar"; \
+    echo "${SPI_SHA256}  /tmp/keycloak-adaptive-mfa.jar" | sha256sum -c -; \
+    curl -fsSL -o /tmp/keycloak-admin-ui-amfa.jar \
+      "${ADMIN_UI_BASE_URL}/${ADMIN_UI_VERSION}/keycloak-admin-ui-amfa.jar"; \
+    echo "${ADMIN_UI_SHA256}  /tmp/keycloak-admin-ui-amfa.jar" | sha256sum -c -; \
+    curl -fsSL -o /tmp/vavr.jar \
+      "${MAVEN_BASE_URL}/io/vavr/vavr/${VAVR_VERSION}/vavr-${VAVR_VERSION}.jar"; \
+    echo "${VAVR_SHA256}  /tmp/vavr.jar" | sha256sum -c -
+
+FROM quay.io/keycloak/keycloak:26.6.3 AS builder
+COPY --from=providers --chown=keycloak:root /tmp/keycloak-adaptive-mfa.jar /opt/keycloak/providers/keycloak-adaptive-mfa.jar
+# Deliberately renamed: this replaces Keycloak's own admin-ui JAR rather than
+# competing with it, so the destination must match the built-in name for 26.6.3.
+COPY --from=providers --chown=keycloak:root /tmp/keycloak-admin-ui-amfa.jar /opt/keycloak/providers/keycloak-admin-ui-26.6.3.jar
+COPY --from=providers --chown=keycloak:root /tmp/vavr.jar /opt/keycloak/providers/vavr-1.0.1.jar
+RUN /opt/keycloak/bin/kc.sh build --health-enabled=true --metrics-enabled=true
+
+FROM quay.io/keycloak/keycloak:26.6.3
+COPY --from=builder /opt/keycloak/ /opt/keycloak/
