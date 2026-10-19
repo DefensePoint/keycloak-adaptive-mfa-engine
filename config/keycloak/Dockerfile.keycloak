@@ -22,7 +22,7 @@
 #     .
 # The digests are unchanged by the source, so a mirror serving different bytes
 # still fails the build.
-FROM curlimages/curl:8.22.0 AS providers
+FROM curlimages/curl:8.23.0 AS providers
 # The SPI and admin-ui release independently, so each pins its own version.
 ARG SPI_VERSION=v1.0.1
 ARG ADMIN_UI_VERSION=v1.0.1
