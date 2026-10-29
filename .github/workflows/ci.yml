@@ -75,3 +75,5 @@ jobs:
         run: python -m alembic upgrade head
       - name: Unit tests
         run: python -m pytest tests/unit -m "not slow"
+      - name: HTTP runtime and lifecycle smoke test
+        run: python -m pytest tests/integration/test_dependency_runtime.py -v
