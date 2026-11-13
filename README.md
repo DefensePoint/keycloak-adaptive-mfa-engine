@@ -175,7 +175,7 @@ flow.
 ### 4. Create a test user
 
 1. Switch to the **test-amfa** realm, go to **Users**, and click **Add user**
-2. Set **Username** to `alice`, **Email** to `alice@test.local`, toggle **Email verified** on
+2. Set **Username** to `alice`, **Email** to `alice@test.local`, **First name** to `Alice` and **Last name** to `Test`, and toggle **Email verified** on
 3. Click **Create**, open the **Credentials** tab
 4. Click **Set password**, enter `Passw0rd!`, toggle **Temporary** off, and save
 
