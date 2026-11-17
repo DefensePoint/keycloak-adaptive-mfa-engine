@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `location_network` stores the coordinates of each address (migration `5ae8978564f9`), and the monitoring endpoints read them for a failed login stored without a risk decision, such as a wrong password or an unknown user, so it appears on the map. An address the lookup cannot place, a private one for example, stores none. Rows written before the upgrade are not backfilled; each gets its coordinates the next time its address logs in.
 - `MSSQL_POOL_SIZE` and `MSSQL_MAX_OVERFLOW` size the SQL Server connection pool. `MSSQL_AUTHENTICATION=ActiveDirectoryMsi` signs in with an Azure managed identity.
 - `tests/integration` runs the login-scoring and monitoring queries against a real database, on PostgreSQL and SQL Server, in CI and before a release.
 - `DB_TYPE=mssql` runs the engine against Azure SQL (or any SQL Server) in the same codebase as PostgreSQL. Postgres remains the default. Connection still uses the existing `POSTGRES_*` variables; ODBC Driver 18 is in the image for the SQL Server path.

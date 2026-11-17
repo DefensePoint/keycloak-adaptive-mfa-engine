@@ -6,7 +6,7 @@ an authentication request is made. It can capture geolocation labels, IP address
 and whether or not a VPN was detected.
 """
 
-from sqlalchemy import Column, Integer, DateTime, String
+from sqlalchemy import Column, Integer, DateTime, Float, String
 from sqlalchemy.sql import func
 from sqlalchemy.orm import validates
 
@@ -30,6 +30,10 @@ class LocationNetwork(Base):
       Numeric representation of IP address (e.g., integer form of IPv4).
     - **is_vpn_flag (Integer)**:
       Flag (commonly 0/1) to indicate whether a VPN is detected.
+    - **lat (Float)**, **long (Float)**:
+      Coordinates of the address, or NULL when the lookup could not place it.
+      The only coordinates a login has when it failed before AMFA's step, such
+      as a wrong password, and so has no auth_process snapshot.
     - **created_at (DateTime)**:
       Automatic timestamp (with timezone) indicating when the record was created.
 
@@ -54,6 +58,8 @@ class LocationNetwork(Base):
         String(45), nullable=False, doc="IP address from which the request originated."
     )
     is_vpn_flag = Column(Integer, doc="Indicator of whether a VPN is detected (0/1).")
+    lat = Column(Float, doc="Latitude of the address; NULL when it could not be placed.")
+    long = Column(Float, doc="Longitude of the address; NULL when it could not be placed.")
 
     created_at = Column(
         DateTime(timezone=True),
