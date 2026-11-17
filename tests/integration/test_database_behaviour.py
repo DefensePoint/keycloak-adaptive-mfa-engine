@@ -305,6 +305,66 @@ async def test_vpn_filter_reads_the_snapshot():
     assert on[0]["is_vpn"] in (True, 1)
 
 
+async def _seed_failed_login(ip: str, country: str, vpn: int) -> AuthEvent:
+    """A LOGIN_ERROR stored without a risk decision, as a wrong password or an
+    unknown user is: no auth_process, only its network location."""
+    network_hash = uuid.uuid4().hex + uuid.uuid4().hex
+    await _add(
+        LocationNetwork(
+            hash=network_hash, ip_address=ip, country=country, is_vpn_flag=vpn
+        )
+    )
+    event = AuthEvent(
+        id=uuid.uuid4(),
+        realm_id="prod",
+        event_type="LOGIN_ERROR",
+        event_time=T0,
+        network_location_hash=network_hash,
+    )
+    await _add(event)
+    return event
+
+
+async def test_failed_login_without_a_process_reads_its_network_location():
+    located = await _seed_failed_login("198.51.100.77", "NL", 1)
+    # The engine stores a country it could not resolve as the text "None".
+    unlocated = await _seed_failed_login("10.0.0.9", "None", 0)
+
+    rows, total, _ = await MonitoringRepository.list_events("prod")
+    by_id = {r["event_id"]: r for r in rows}
+    assert total == 2
+    assert by_id[located.id]["ip_address"] == "198.51.100.77"
+    assert by_id[located.id]["country"] == "NL"
+    assert by_id[located.id]["is_vpn"] in (True, 1)
+    assert by_id[located.id]["lat"] is None
+    assert by_id[unlocated.id]["ip_address"] == "10.0.0.9"
+    assert by_id[unlocated.id]["country"] is None
+    assert by_id[unlocated.id]["is_vpn"] in (False, 0)
+
+    on, on_total, _ = await MonitoringRepository.list_events("prod", is_vpn=True)
+    assert [r["event_id"] for r in on] == [located.id] and on_total == 1
+    assert (await MonitoringRepository.get_stats("prod"))["flagged_ips"] == 1
+
+
+async def test_a_scored_login_prefers_its_snapshot_to_the_network_location():
+    event = await _seed_login(
+        context={"ip_address": "198.51.100.5", "country_name": "PT", "is_vpn": False}
+    )
+    async with DB.get_session()() as session:
+        row = await session.get(AuthEvent, event.id)
+        process = await session.get(AuthProcess, row.auth_process)
+        row.network_location_hash = process.network_location_hash
+        network = await session.get(LocationNetwork, process.network_location_hash)
+        network.country = "XX"
+        network.is_vpn_flag = 1
+        await session.commit()
+
+    rows, _, _ = await MonitoringRepository.list_events("prod")
+    assert rows[0]["ip_address"] == "198.51.100.5"
+    assert rows[0]["country"] == "PT"
+    assert rows[0]["is_vpn"] in (False, 0)
+
+
 async def test_risk_filters():
     await _seed_login(risk=1)
     await _seed_login(risk=4)

@@ -5,14 +5,21 @@ Context fields read `auth_context` first and fall back to the
 `auth_context`, and a LEFT JOIN against it yields NULL rather than an error, so
 a query reading only the table returns no data and no failure.
 
+IP, country and VPN flag fall back once more, to `location_network`. A
+LOGIN_ERROR stored without a risk decision (a wrong password or an unknown
+user, which fail before AMFA's step runs) has no `auth_process` and so no
+snapshot, but the webhook still wrote its address, country and VPN flag
+there. `location_network` has no coordinates, so such a failure still has no
+place on the map.
+
 The realm filter reads the `realm_id` column first and falls back to the same
 snapshot. Migrations f1a2b3c4d5e6 and a2b3c4d5e6f7 left pre-existing rows NULL.
 """
 
-from sqlalchemy import Float, Numeric, and_, case, cast, func, literal, or_
+from sqlalchemy import Boolean, Float, Numeric, and_, case, cast, func, literal, or_
 
 from src.core.sql_dialect import EmptyAsNull, JsonBool, JsonText, NullIfEq
-from src.data.model import AuthContext, AuthEvent, AuthProcess
+from src.data.model import AuthContext, AuthEvent, AuthProcess, LocationNetwork
 
 
 def _json_text(key: str):
@@ -62,15 +69,31 @@ def realm_filter(realm_id: str):
 
 # --- login context --------------------------------------------------------
 
+# The network location's VPN flag as a value. A comparison cannot stand in for
+# a value inside COALESCE on SQL Server, so it goes through a CASE.
+_network_is_vpn = case(
+    (LocationNetwork.is_vpn_flag.is_(None), None),
+    (LocationNetwork.is_vpn_flag != 0, literal(True)),
+    else_=literal(False),
+).cast(Boolean)
+
 client_expr = func.coalesce(AuthContext.client, _json_text("client"), literal(""))
-ip_expr = func.coalesce(AuthContext.ip_address, _json_text("ip_address"), literal(""))
+ip_expr = func.coalesce(
+    AuthContext.ip_address,
+    _json_text("ip_address"),
+    func.nullif(LocationNetwork.ip_address, ""),
+    literal(""),
+)
+# The engine stores a country it could not resolve as the text "None".
 country_expr = func.coalesce(
-    func.nullif(AuthContext.country_name, ""), _json_text("country_name")
+    func.nullif(AuthContext.country_name, ""),
+    _json_text("country_name"),
+    func.nullif(func.nullif(LocationNetwork.country, ""), "None"),
 )
 lat_expr = func.coalesce(AuthContext.lat, cast(_json_text("lat"), Float))
 long_expr = func.coalesce(AuthContext.long, cast(_json_text("long"), Float))
 is_vpn_expr = func.coalesce(
-    AuthContext.is_vpn, _json_bool("is_vpn"), literal(False)
+    AuthContext.is_vpn, _json_bool("is_vpn"), _network_is_vpn, literal(False)
 )
 
 # AuthContext has no city column, so city has no table-first fallback to apply.

@@ -41,16 +41,44 @@ def sql_mssql(stmt) -> str:
     )
 
 
-def test_events_query_joins_all_three_tables_outer():
-    """auth_process and auth_context must both be LEFT JOINed.
+def test_events_query_joins_all_four_tables_outer():
+    """auth_process, auth_context and location_network must all be LEFT JOINed.
 
     An inner join to auth_process would drop every event whose process never
     linked, and auth_context is never populated at all, so an inner join there
-    would return nothing whatsoever.
+    would return nothing whatsoever. location_network is optional on an event.
     """
     s = sql(MonitoringRepository.build_events_query("acme"))
-    assert s.count("LEFT OUTER JOIN") == 2
-    assert "auth_process" in s and "auth_context" in s
+    assert s.count("LEFT OUTER JOIN") == 3
+    assert "auth_process" in s and "auth_context" in s and "location_network" in s
+
+
+def test_failed_login_location_falls_back_to_location_network():
+    """A LOGIN_ERROR stored without a risk decision has no process snapshot.
+
+    A wrong password or an unknown user fails before AMFA's step runs, so the
+    event has no auth_process, but the webhook still wrote its address,
+    country and VPN flag to location_network. Without that source the event
+    reports no IP, no country and no VPN flag.
+    """
+    s = sql(MonitoringRepository.build_events_query("acme"))
+    # Joined only where there is no process, so a scored event keeps reading its
+    # snapshot and the aggregates do not pay for the join on every row.
+    assert (
+        "auth_process.id IS NULL AND location_network.hash = "
+        "auth_event.network_location_hash" in s
+    )
+    for column in ("ip_address", "country", "is_vpn_flag"):
+        assert f"location_network.{column}" in s
+    # The engine stores a country it could not resolve as the text "None".
+    assert "'None'" in s
+
+
+def test_mssql_failed_login_vpn_flag_compiles_as_a_value():
+    """SQL Server has no boolean expressions in COALESCE, so the flag goes
+    through a CASE that yields 1, 0 or NULL."""
+    s = sql_mssql(MonitoringRepository.build_events_query("acme", is_vpn=True))
+    assert "CASE WHEN (location_network.is_vpn_flag IS NULL) THEN NULL" in s
 
 
 def test_events_query_is_realm_scoped_from_both_sources():
@@ -273,6 +301,9 @@ def test_stats_vpn_and_ip_both_read_through_the_fallback():
     s = sql(MonitoringRepository.build_stats_query("acme"))
     assert "->> 'is_vpn'" in s
     assert "->> 'ip_address'" in s
+    # A failed login AMFA never scored has only its network location.
+    assert "location_network.is_vpn_flag" in s
+    assert "location_network.ip_address" in s
 
 
 def test_stats_risky_uses_the_shared_threshold():
@@ -422,7 +453,8 @@ def test_every_aggregate_is_realm_scoped():
 
 def test_every_aggregate_joins_outer():
     """An inner join to auth_context would return nothing at all, since that
-    table is never populated.
+    table is never populated, and one to location_network would drop events
+    that have no network location.
     """
     for stmt in (
         MonitoringRepository.build_stats_query("acme"),
@@ -430,7 +462,7 @@ def test_every_aggregate_joins_outer():
         MonitoringRepository.build_risky_users_query("acme"),
         MonitoringRepository.build_event_count_query("acme", "LOGIN"),
     ):
-        assert sql(stmt).count("LEFT OUTER JOIN") == 2
+        assert sql(stmt).count("LEFT OUTER JOIN") == 3
 
 
 def test_realm_or_clause_is_parenthesized_against_other_filters():
