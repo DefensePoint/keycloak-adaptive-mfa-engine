@@ -43,3 +43,8 @@ async def get_cached_location_network_by_hash(
 
     logging.debug("Network Location record not found!")
     return None
+
+
+async def forget_cached_location_network(loc_net_hash: str) -> None:
+    """Drop a cached row after the database copy changed."""
+    await get_redis().delete(LOCATION_NETWORK_KEY_TEMPLATE.format(loc_net_hash))

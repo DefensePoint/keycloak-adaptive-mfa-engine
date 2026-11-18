@@ -4,7 +4,7 @@
 
 from typing import List
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -119,6 +119,32 @@ class LocationNetworkRepository:
             await session.commit()
             await session.refresh(merged_loc_net)
             return merged_loc_net
+
+    @staticmethod
+    async def set_coordinates_if_missing(loc_net_hash: str, lat: float, long: float) -> bool:
+        """
+        Gives a **LocationNetwork** row written before it had coordinates its
+        coordinates. A row that has them is left as it is.
+
+        **Returns**
+        - True when the row was updated.
+        """
+        async_session = DB.get_session()
+        if not isinstance(async_session, async_sessionmaker):
+            raise ValueError("No async database session available")
+
+        async with async_session() as session:
+            result = await session.execute(
+                update(LocationNetwork)
+                .where(
+                    LocationNetwork.hash == loc_net_hash,
+                    LocationNetwork.lat.is_(None),
+                    LocationNetwork.long.is_(None),
+                )
+                .values(lat=lat, long=long)
+            )
+            await session.commit()
+            return result.rowcount > 0
 
     @staticmethod
     async def delete_location_network(loc_net: LocationNetwork) -> None:
