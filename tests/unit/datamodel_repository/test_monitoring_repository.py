@@ -68,10 +68,16 @@ def test_failed_login_location_falls_back_to_location_network():
         "auth_process.id IS NULL AND location_network.hash = "
         "auth_event.network_location_hash" in s
     )
-    for column in ("ip_address", "country", "is_vpn_flag"):
+    for column in ("ip_address", "country", "is_vpn_flag", "lat", "long"):
         assert f"location_network.{column}" in s
     # The engine stores a country it could not resolve as the text "None".
     assert "'None'" in s
+
+
+def test_geo_places_a_failed_login_by_its_network_location():
+    """An unscored failure has coordinates only in location_network."""
+    s = sql(MonitoringRepository.build_geo_query("acme"))
+    assert "location_network.lat" in s and "location_network.long" in s
 
 
 def test_mssql_failed_login_vpn_flag_compiles_as_a_value():

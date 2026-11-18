@@ -457,7 +457,9 @@ REDIS_SSL_CA_CERTS = os.getenv("REDIS_SSL_CA_CERTS") or None
 MIN_AUTH_EVENTS = int(os.getenv(key="MIN_AUTH_EVENTS", default="4"))
 MAX_AUTH_EVENTS = int(os.getenv(key="MAX_AUTH_EVENTS", default="500"))
 
-LOCATION_NETWORK_KEY_TEMPLATE = "auth:location_network:v1:{}"
+# v2: entries carry lat/long. A version before them cannot load such an entry,
+# and this one would refill a v1 entry on every read, so each reads only its own.
+LOCATION_NETWORK_KEY_TEMPLATE = "auth:location_network:v2:{}"
 DEVICE_KEY_TEMPLATE = "auth:device:v1:{}"
 
 

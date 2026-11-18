@@ -305,13 +305,20 @@ async def test_vpn_filter_reads_the_snapshot():
     assert on[0]["is_vpn"] in (True, 1)
 
 
-async def _seed_failed_login(ip: str, country: str, vpn: int) -> AuthEvent:
+async def _seed_failed_login(
+    ip: str, country: str, vpn: int, lat=None, long=None
+) -> AuthEvent:
     """A LOGIN_ERROR stored without a risk decision, as a wrong password or an
     unknown user is: no auth_process, only its network location."""
     network_hash = uuid.uuid4().hex + uuid.uuid4().hex
     await _add(
         LocationNetwork(
-            hash=network_hash, ip_address=ip, country=country, is_vpn_flag=vpn
+            hash=network_hash,
+            ip_address=ip,
+            country=country,
+            is_vpn_flag=vpn,
+            lat=lat,
+            long=long,
         )
     )
     event = AuthEvent(
@@ -344,6 +351,39 @@ async def test_failed_login_without_a_process_reads_its_network_location():
     on, on_total, _ = await MonitoringRepository.list_events("prod", is_vpn=True)
     assert [r["event_id"] for r in on] == [located.id] and on_total == 1
     assert (await MonitoringRepository.get_stats("prod"))["flagged_ips"] == 1
+
+
+async def test_failed_login_with_coordinates_is_on_the_map():
+    located = await _seed_failed_login("198.51.100.77", "NL", 0, 52.3676, 4.9041)
+    await _seed_failed_login("10.0.0.9", "", 0)
+
+    rows, _, _ = await MonitoringRepository.list_events("prod")
+    by_id = {r["event_id"]: r for r in rows}
+    assert by_id[located.id]["lat"] == pytest.approx(52.3676)
+    assert by_id[located.id]["long"] == pytest.approx(4.9041)
+
+    buckets = await MonitoringRepository.get_geo_buckets("prod")
+    assert buckets == [
+        {"country": "NL", "lat": 52.4, "long": 4.9, "count": 1, "risky_count": 0}
+    ]
+
+
+async def test_coordinates_fill_only_a_row_without_them():
+    from src.data.repository.location_network import LocationNetworkRepository
+
+    empty_hash = uuid.uuid4().hex + uuid.uuid4().hex
+    full_hash = uuid.uuid4().hex + uuid.uuid4().hex
+    await _add(
+        LocationNetwork(hash=empty_hash, ip_address="198.51.100.8"),
+        LocationNetwork(hash=full_hash, ip_address="198.51.100.9", lat=1.5, long=2.5),
+    )
+    assert await LocationNetworkRepository.set_coordinates_if_missing(empty_hash, 47.38, 8.54)
+    assert not await LocationNetworkRepository.set_coordinates_if_missing(full_hash, 9.0, 9.0)
+    async with DB.get_session()() as session:
+        filled = await session.get(LocationNetwork, empty_hash)
+        kept = await session.get(LocationNetwork, full_hash)
+    assert (filled.lat, filled.long) == (pytest.approx(47.38), pytest.approx(8.54))
+    assert (kept.lat, kept.long) == (pytest.approx(1.5), pytest.approx(2.5))
 
 
 async def test_a_scored_login_prefers_its_snapshot_to_the_network_location():
