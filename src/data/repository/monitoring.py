@@ -1,20 +1,21 @@
 """Read-only queries backing the monitoring endpoints.
 
 Every method is realm-scoped so one tenant's token cannot read another
-tenant's history. Both joins are outer: a webhook event can arrive with no
-`auth_process`, and nothing populates `auth_context`.
+tenant's history. Every join is outer: a webhook event can arrive with no
+`auth_process`, nothing populates `auth_context`, and `location_network` is
+optional on an event.
 """
 
 from datetime import datetime
 from typing import List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.database import DB
 from src.core.sql_dialect import bool_is, row_compare
-from src.data.model import AuthContext, AuthEvent, AuthProcess
+from src.data.model import AuthContext, AuthEvent, AuthProcess, LocationNetwork
 from src.data.repository import monitoring_expr as expr
 
 # The response is built in memory, so the page size needs a ceiling.
@@ -92,9 +93,20 @@ def _base_columns():
 
 
 def _joined(stmt):
-    """Apply the three-table join every monitoring query needs."""
-    return stmt.outerjoin(AuthProcess, AuthProcess.id == AuthEvent.auth_process).outerjoin(
-        AuthContext, AuthContext.hash == AuthEvent.auth_context_hash
+    """Apply the four-table join every monitoring query needs."""
+    return (
+        stmt.outerjoin(AuthProcess, AuthProcess.id == AuthEvent.auth_process)
+        .outerjoin(AuthContext, AuthContext.hash == AuthEvent.auth_context_hash)
+        # Only for an event with no process: a scored event has its snapshot,
+        # which every expression reads first, and joining every row cost the
+        # stats query far more than the fallback is worth.
+        .outerjoin(
+            LocationNetwork,
+            and_(
+                AuthProcess.id.is_(None),
+                LocationNetwork.hash == AuthEvent.network_location_hash,
+            ),
+        )
     )
 
 
