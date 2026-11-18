@@ -56,9 +56,10 @@ class NetworkLocationFactory:
             logging.info(f"Created new net_loc object | hash {location_hash}")
         elif lat is not None and existing_net_loc.lat is None and existing_net_loc.long is None:
             # A row written before location_network had coordinates, or a copy
-            # cached before then. The hash covers the coordinates, so these are
-            # the row's own. The cached copy goes either way, so a row filled
-            # already is not updated again on every login until it expires.
+            # of it cached before it was filled. The hash covers the
+            # coordinates, so these are the row's own. The cached copy goes
+            # either way, so a row filled already is not updated again on every
+            # login until it expires.
             await LocationNetworkRepository.set_coordinates_if_missing(
                 location_hash, lat, long
             )
