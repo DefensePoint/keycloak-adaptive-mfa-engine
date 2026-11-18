@@ -5,12 +5,12 @@ Context fields read `auth_context` first and fall back to the
 `auth_context`, and a LEFT JOIN against it yields NULL rather than an error, so
 a query reading only the table returns no data and no failure.
 
-IP, country and VPN flag fall back once more, to `location_network`. A
-LOGIN_ERROR stored without a risk decision (a wrong password or an unknown
-user, which fail before AMFA's step runs) has no `auth_process` and so no
-snapshot, but the webhook still wrote its address, country and VPN flag
-there. `location_network` has no coordinates, so such a failure still has no
-place on the map.
+IP, country, VPN flag and coordinates fall back once more, to
+`location_network`. A LOGIN_ERROR stored without a risk decision (a wrong
+password or an unknown user, which fail before AMFA's step runs) has no
+`auth_process` and so no snapshot, but the webhook still wrote its network
+location. Its coordinates are there only for rows written since that table
+had them (migration 5ae8978564f9), or filled since.
 
 The realm filter reads the `realm_id` column first and falls back to the same
 snapshot. Migrations f1a2b3c4d5e6 and a2b3c4d5e6f7 left pre-existing rows NULL.
@@ -90,8 +90,12 @@ country_expr = func.coalesce(
     _json_text("country_name"),
     func.nullif(func.nullif(LocationNetwork.country, ""), "None"),
 )
-lat_expr = func.coalesce(AuthContext.lat, cast(_json_text("lat"), Float))
-long_expr = func.coalesce(AuthContext.long, cast(_json_text("long"), Float))
+lat_expr = func.coalesce(
+    AuthContext.lat, cast(_json_text("lat"), Float), LocationNetwork.lat
+)
+long_expr = func.coalesce(
+    AuthContext.long, cast(_json_text("long"), Float), LocationNetwork.long
+)
 is_vpn_expr = func.coalesce(
     AuthContext.is_vpn, _json_bool("is_vpn"), _network_is_vpn, literal(False)
 )
