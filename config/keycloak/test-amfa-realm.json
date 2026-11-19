@@ -3082,6 +3082,15 @@
       "defaultAction": false,
       "priority": 1000,
       "config": {}
+    },
+    {
+      "alias": "amfa-login-event-details",
+      "name": "AMFA details on login events",
+      "providerId": "amfa-login-event-details",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 1010,
+      "config": {}
     }
   ],
   "browserFlow": "amfa-browser",
