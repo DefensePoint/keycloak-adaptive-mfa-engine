@@ -36,11 +36,11 @@ def _ts(year: int, month: int, day: int, hour: int) -> float:
     return datetime.datetime(year, month, day, hour, 0, 0).timestamp() * 1000
 
 
-# History: 10 weekday logins at hour 23 (this user's dominant/common hour),
+# History: 18 weekday logins at hour 23 (this user's dominant/common hour),
 # one weekday login at hour 03, and one weekday login at hour 22 (so hour 22
 # has only 1 prior login, i.e. <= 3, and the histogram branch is entered for
-# it). All dates are Mon-Fri: 2025-01-06..10 and 2025-01-13..17 (Mon-Fri),
-# plus 2025-01-20 (Mon) and 2025-01-21 (Tue).
+# it), for 20 weekday samples total (>= DATETIME_MIN_SAMPLES). All dates are
+# Mon-Fri.
 _HISTORY_ROWS = [
     {"event_time": _ts(2025, 1, 6, 23), "lat": 0.0, "long": 0.0},  # Mon
     {"event_time": _ts(2025, 1, 7, 23), "lat": 0.0, "long": 0.0},  # Tue
@@ -52,6 +52,16 @@ _HISTORY_ROWS = [
     {"event_time": _ts(2025, 1, 15, 23), "lat": 0.0, "long": 0.0},  # Wed
     {"event_time": _ts(2025, 1, 16, 23), "lat": 0.0, "long": 0.0},  # Thu
     {"event_time": _ts(2025, 1, 17, 23), "lat": 0.0, "long": 0.0},  # Fri
+    # Additional dominant-hour (23:00) weekdays so the weekday history reaches
+    # DATETIME_MIN_SAMPLES (20); below that the time-of-day check stays LOW.
+    {"event_time": _ts(2025, 1, 23, 23), "lat": 0.0, "long": 0.0},  # Thu
+    {"event_time": _ts(2025, 1, 24, 23), "lat": 0.0, "long": 0.0},  # Fri
+    {"event_time": _ts(2025, 1, 27, 23), "lat": 0.0, "long": 0.0},  # Mon
+    {"event_time": _ts(2025, 1, 28, 23), "lat": 0.0, "long": 0.0},  # Tue
+    {"event_time": _ts(2025, 1, 29, 23), "lat": 0.0, "long": 0.0},  # Wed
+    {"event_time": _ts(2025, 1, 30, 23), "lat": 0.0, "long": 0.0},  # Thu
+    {"event_time": _ts(2025, 1, 31, 23), "lat": 0.0, "long": 0.0},  # Fri
+    {"event_time": _ts(2025, 2, 3, 23), "lat": 0.0, "long": 0.0},  # Mon
     {"event_time": _ts(2025, 1, 20, 3), "lat": 0.0, "long": 0.0},  # Mon
     {"event_time": _ts(2025, 1, 21, 22), "lat": 0.0, "long": 0.0},  # Tue
 ]

@@ -256,6 +256,12 @@ DROP_DOWN_DECAY_STEPS = int(os.getenv(key="DROP_DOWN_DECAY_STEPS", default=2))
 
 TIME_ZONE = os.getenv(key="TIME_ZONE", default="Europe/Lisbon")
 
+# Minimum same-day-type login history required before the time-of-day check can
+# flag a login as HIGH. Below this, the hour-of-day histogram is too sparse to
+# be trustworthy (almost any not-yet-seen hour looks anomalous), so the check
+# stays inconclusive (LOW) until enough samples accrue.
+DATETIME_MIN_SAMPLES = int(os.getenv(key="DATETIME_MIN_SAMPLES", default=20))
+
 
 N_ROWS_TO_KEEP = int(os.getenv(key="N_ROWS_TO_KEEP", default=10))
 
@@ -457,7 +463,9 @@ REDIS_SSL_CA_CERTS = os.getenv("REDIS_SSL_CA_CERTS") or None
 MIN_AUTH_EVENTS = int(os.getenv(key="MIN_AUTH_EVENTS", default="4"))
 MAX_AUTH_EVENTS = int(os.getenv(key="MAX_AUTH_EVENTS", default="500"))
 
-LOCATION_NETWORK_KEY_TEMPLATE = "auth:location_network:v1:{}"
+# v2: entries carry lat/long. A version before them cannot load such an entry,
+# and this one would refill a v1 entry on every read, so each reads only its own.
+LOCATION_NETWORK_KEY_TEMPLATE = "auth:location_network:v2:{}"
 DEVICE_KEY_TEMPLATE = "auth:device:v1:{}"
 
 

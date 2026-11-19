@@ -25,7 +25,7 @@ On PostgreSQL the engine's tables call `uuid_generate_v4()`, so the database nee
 
 That `CREATE EXTENSION` is enough on Docker Postgres and on CloudNativePG when the Database object lists `uuid-ossp`. `uuid-ossp` is a trusted extension, so the role running the migration needs `CREATE` on the database rather than superuser, which is why this works where the application user is not a superuser. Some managed Postgres products (Azure Database for PostgreSQL Flexible Server via `azure.extensions`) reject `CREATE EXTENSION` until the extension is allow-listed at the server. If you are not using the compose stack, confirm that allow-list before the first migration.
 
-On Azure SQL the same migration uses `NEWID()` and `TODATETIMEOFFSET(SYSUTCDATETIME(), 0)`, skips `uuid-ossp`, and stores JSON in `nvarchar`. Create an **empty** database (not a Keycloak database) on the SQL server and point `POSTGRES_*` at it with `DB_TYPE=mssql`.
+On Azure SQL the same migration uses `NEWID()` and `TODATETIMEOFFSET(SYSUTCDATETIME(), 0)`, skips `uuid-ossp`, and stores JSON in `nvarchar`; a later migration stamps `auth_event.event_time` to the microsecond, the precision the engine reads it in. Create an **empty** database (not a Keycloak database) on the SQL server and point `POSTGRES_*` at it with `DB_TYPE=mssql`.
 
 ### Azure SQL / SQL Server setup
 
@@ -173,6 +173,7 @@ treated as a very unfamiliar context and risk is forced up.
 | `DEFAULT_INACTIVE_DAYS` | `40`            | Days of inactivity before flagging an account as inactive           |
 | `MIN_AUTH_EVENTS`       | `4`             | Minimum number of past events required before clustering is applied |
 | `DEVICE_SIGNAL_INCLUDE_BROWSER_VERSION` | `false` | Include the browser major version in the browser/device signal. Default `false` (family only) so routine browser auto-updates are not treated as a changed device |
+| `DATETIME_MIN_SAMPLES`  | `20`            | Minimum same-day-type login history before the time-of-day check can flag a login HIGH; below this the hour-of-day histogram is too sparse to be reliable, so it stays LOW |
 | `MAX_AUTH_EVENTS`       | `500`           | Maximum number of events retrieved per user for evaluation          |
 | `TIME_ZONE`             | `Europe/Lisbon` | Timezone applied to datetime-based risk checks                      |
 | `IMPOSSIBLE_TRAVEL_MAX_SPEED_KMH`     | `900` | Absolute speed cap for impossible-travel; a leg above it is always impossible |

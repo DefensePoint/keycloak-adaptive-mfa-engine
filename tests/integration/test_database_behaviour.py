@@ -282,6 +282,82 @@ async def test_event_pages_walk_every_row_once_in_both_directions():
         assert len(seen) == len(set(seen))
 
 
+async def test_event_pages_merge_both_realm_sources_in_order():
+    """Events with a realm of their own and events matched through their
+    auth_process are read in separate branches. Interleaved in time, with
+    shared timestamps and another realm's events around them, every page walk
+    must return exactly the rows, in the order, of one unpaged query with the
+    combined realm filter."""
+    own, legacy = [], []
+    for i in range(12):
+        event = await _seed_login(event_time=T0 + timedelta(seconds=i // 3))
+        if i % 3 == 1:
+            legacy.append(event.id)
+        else:
+            own.append(event.id)
+        await _seed_login(realm="other", event_time=T0 + timedelta(seconds=i // 3))
+    async with DB.get_session()() as session:
+        for event_id in legacy:
+            row = await session.get(AuthEvent, event_id)
+            row.realm_id = None if DB_TYPE == "mssql" else ""
+            process = await session.get(AuthProcess, row.auth_process)
+            process.realm_id = None
+            process.auth_context_json = {"realm_id": "prod"}
+        await session.commit()
+
+    for since in (None, T0 + timedelta(seconds=1)):
+        for ascending in (True, False):
+            direction = (AuthEvent.event_time, AuthEvent.id) if ascending else (
+                AuthEvent.event_time.desc(), AuthEvent.id.desc())
+            reference = select(AuthEvent.id).outerjoin(
+                AuthProcess, AuthProcess.id == AuthEvent.auth_process
+            ).where(monitoring_expr.realm_filter("prod"))
+            if since is not None:
+                reference = reference.where(AuthEvent.event_time > since)
+            async with DB.get_session()() as session:
+                expected = list((await session.execute(reference.order_by(*direction))).scalars())
+            seen, cursor = [], None
+            while True:
+                rows, _, cursor = await MonitoringRepository.list_events(
+                    "prod", since=since, limit=3, cursor=cursor, ascending=ascending
+                )
+                seen += [r["event_id"] for r in rows]
+                if cursor is None:
+                    break
+            assert len(expected) == (12 if since is None else 6)
+            assert seen == expected, (since, ascending)
+
+
+async def test_event_pages_walk_server_stamped_times_once():
+    """The engine never sets event_time: the database stamps it. Pages must
+    still return every event once, in both directions. SQL Server stamped
+    100 ns, which the driver reads back as microseconds, so the cursor fell
+    just before its own row: an ascending walk returned rows again, and a
+    descending one skipped them."""
+    ids = []
+    for batch in range(4):
+        events = [
+            AuthEvent(id=uuid.uuid4(), user_id=uuid.uuid4(), realm_id="prod", event_type="LOGIN_ERROR")
+            for _ in range(5)
+        ]
+        await _add(*events)
+        ids += [e.id for e in events]
+    for ascending in (True, False):
+        seen, cursor = [], None
+        # A cursor that falls before its own row never advances: stop after
+        # more pages than a correct walk needs.
+        for _ in range(len(ids)):
+            rows, _, cursor = await MonitoringRepository.list_events(
+                "prod", limit=3, cursor=cursor, ascending=ascending
+            )
+            seen += [r["event_id"] for r in rows]
+            if cursor is None:
+                break
+        assert cursor is None, ("never ended", ascending)
+        assert len(seen) == len(set(seen)), ("repeated", ascending)
+        assert set(seen) == set(ids), ("missing", ascending)
+
+
 async def test_first_page_reports_the_total_and_later_pages_skip_it():
     for i in range(3):
         await _seed_login(event_time=T0 + timedelta(seconds=i))
@@ -303,6 +379,106 @@ async def test_vpn_filter_reads_the_snapshot():
     assert [r["ip_address"] for r in on] == ["198.51.100.1"] and on_total == 1
     assert off_total == 2 and len(off) == 2
     assert on[0]["is_vpn"] in (True, 1)
+
+
+async def _seed_failed_login(
+    ip: str, country: str, vpn: int, lat=None, long=None
+) -> AuthEvent:
+    """A LOGIN_ERROR stored without a risk decision, as a wrong password or an
+    unknown user is: no auth_process, only its network location."""
+    network_hash = uuid.uuid4().hex + uuid.uuid4().hex
+    await _add(
+        LocationNetwork(
+            hash=network_hash,
+            ip_address=ip,
+            country=country,
+            is_vpn_flag=vpn,
+            lat=lat,
+            long=long,
+        )
+    )
+    event = AuthEvent(
+        id=uuid.uuid4(),
+        realm_id="prod",
+        event_type="LOGIN_ERROR",
+        event_time=T0,
+        network_location_hash=network_hash,
+    )
+    await _add(event)
+    return event
+
+
+async def test_failed_login_without_a_process_reads_its_network_location():
+    located = await _seed_failed_login("198.51.100.77", "NL", 1)
+    # The engine stores a country it could not resolve as the text "None".
+    unlocated = await _seed_failed_login("10.0.0.9", "None", 0)
+
+    rows, total, _ = await MonitoringRepository.list_events("prod")
+    by_id = {r["event_id"]: r for r in rows}
+    assert total == 2
+    assert by_id[located.id]["ip_address"] == "198.51.100.77"
+    assert by_id[located.id]["country"] == "NL"
+    assert by_id[located.id]["is_vpn"] in (True, 1)
+    assert by_id[located.id]["lat"] is None
+    assert by_id[unlocated.id]["ip_address"] == "10.0.0.9"
+    assert by_id[unlocated.id]["country"] is None
+    assert by_id[unlocated.id]["is_vpn"] in (False, 0)
+
+    on, on_total, _ = await MonitoringRepository.list_events("prod", is_vpn=True)
+    assert [r["event_id"] for r in on] == [located.id] and on_total == 1
+    assert (await MonitoringRepository.get_stats("prod"))["flagged_ips"] == 1
+
+
+async def test_failed_login_with_coordinates_is_on_the_map():
+    located = await _seed_failed_login("198.51.100.77", "NL", 0, 52.3676, 4.9041)
+    await _seed_failed_login("10.0.0.9", "", 0)
+
+    rows, _, _ = await MonitoringRepository.list_events("prod")
+    by_id = {r["event_id"]: r for r in rows}
+    assert by_id[located.id]["lat"] == pytest.approx(52.3676)
+    assert by_id[located.id]["long"] == pytest.approx(4.9041)
+
+    buckets = await MonitoringRepository.get_geo_buckets("prod")
+    assert buckets == [
+        {"country": "NL", "lat": 52.4, "long": 4.9, "count": 1, "risky_count": 0}
+    ]
+
+
+async def test_coordinates_fill_only_a_row_without_them():
+    from src.data.repository.location_network import LocationNetworkRepository
+
+    empty_hash = uuid.uuid4().hex + uuid.uuid4().hex
+    full_hash = uuid.uuid4().hex + uuid.uuid4().hex
+    await _add(
+        LocationNetwork(hash=empty_hash, ip_address="198.51.100.8"),
+        LocationNetwork(hash=full_hash, ip_address="198.51.100.9", lat=1.5, long=2.5),
+    )
+    assert await LocationNetworkRepository.set_coordinates_if_missing(empty_hash, 47.38, 8.54)
+    assert not await LocationNetworkRepository.set_coordinates_if_missing(full_hash, 9.0, 9.0)
+    async with DB.get_session()() as session:
+        filled = await session.get(LocationNetwork, empty_hash)
+        kept = await session.get(LocationNetwork, full_hash)
+    assert (filled.lat, filled.long) == (pytest.approx(47.38), pytest.approx(8.54))
+    assert (kept.lat, kept.long) == (pytest.approx(1.5), pytest.approx(2.5))
+
+
+async def test_a_scored_login_prefers_its_snapshot_to_the_network_location():
+    event = await _seed_login(
+        context={"ip_address": "198.51.100.5", "country_name": "PT", "is_vpn": False}
+    )
+    async with DB.get_session()() as session:
+        row = await session.get(AuthEvent, event.id)
+        process = await session.get(AuthProcess, row.auth_process)
+        row.network_location_hash = process.network_location_hash
+        network = await session.get(LocationNetwork, process.network_location_hash)
+        network.country = "XX"
+        network.is_vpn_flag = 1
+        await session.commit()
+
+    rows, _, _ = await MonitoringRepository.list_events("prod")
+    assert rows[0]["ip_address"] == "198.51.100.5"
+    assert rows[0]["country"] == "PT"
+    assert rows[0]["is_vpn"] in (False, 0)
 
 
 async def test_risk_filters():

@@ -63,6 +63,21 @@ def test_mssql_url_uses_odbc_and_encrypts():
     assert "Encrypt=yes" in async_url
 
 
+@pytest.mark.parametrize("db_type_name", ["postgresql", "mssql"])
+def test_credentials_reach_the_driver_as_given(db_type_name):
+    # quote_plus wrote a space as "+", which SQLAlchemy does not decode back,
+    # so a user or password with a space could not sign in.
+    user, password = "amfa svc", "my pass+1@:/#%?&=;{}"
+    for url in build_database_urls(db_type_name, user, password, "db.example", 5432, "adaptive_mfa"):
+        parsed = make_url(url)
+        assert (parsed.username, parsed.password) == (user, password)
+    if db_type_name == "mssql":
+        sync, _ = build_database_urls(db_type_name, user, password, "db.example", 1433, "adaptive_mfa")
+        args, _ = mssql.pyodbc.dialect().create_connect_args(make_url(sync))
+        assert f"UID={user}" in args[0]
+        assert f"PWD={odbc_brace(password)}" in args[0]
+
+
 def test_sqlalchemy_registers_mssql_aioodbc():
     """The image installs from requirements.txt. aioodbc landed in 2.0.23."""
     from sqlalchemy.dialects.mssql import aioodbc
@@ -284,7 +299,7 @@ def test_mssql_descending_index_ddl_is_plain_column_list():
     assert "[finished_at DESC]" not in ddl
 
 
-def test_row_compare_is_portable_or_on_both_dialects():
+def test_row_compare_is_a_row_comparison_on_postgres_and_or_on_mssql():
     table = Table(
         "auth_event",
         MetaData(),
@@ -300,9 +315,14 @@ def test_row_compare_is_portable_or_on_both_dialects():
     ms = str(
         stmt.compile(dialect=mssql.dialect(), compile_kwargs={"literal_binds": True})
     )
-    assert "auth_event.event_time >" in pg
-    assert "OR" in pg
-    assert "(auth_event.event_time, auth_event.id)" not in pg
+    assert "(auth_event.event_time, auth_event.id) > (" in pg
+    assert " OR " not in pg
+    less = str(
+        select(table.c.id)
+        .where(row_compare(table.c.event_time, table.c.id, when, event_id, greater=False))
+        .compile(dialect=postgresql.dialect())
+    )
+    assert "(auth_event.event_time, auth_event.id) < (" in less
     assert "auth_event.event_time >" in ms
     assert "OR" in ms
     assert "(auth_event.event_time, auth_event.id)" not in ms

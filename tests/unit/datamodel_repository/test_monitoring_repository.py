@@ -41,16 +41,53 @@ def sql_mssql(stmt) -> str:
     )
 
 
-def test_events_query_joins_all_three_tables_outer():
-    """auth_process and auth_context must both be LEFT JOINed.
+def test_events_query_joins_all_four_tables_outer(monkeypatch):
+    """auth_process, auth_context and location_network must all be LEFT JOINed.
 
     An inner join to auth_process would drop every event whose process never
     linked, and auth_context is never populated at all, so an inner join there
-    would return nothing whatsoever.
+    would return nothing whatsoever. location_network is optional on an event.
+    """
+    monkeypatch.setenv("DB_TYPE", "postgresql")
+    s = sql(MonitoringRepository.build_events_query("acme"))
+    # Three in each realm branch.
+    assert s.count("LEFT OUTER JOIN") == 6
+    assert s.count(" JOIN ") == 6
+    assert "auth_process" in s and "auth_context" in s and "location_network" in s
+
+
+def test_failed_login_location_falls_back_to_location_network():
+    """A LOGIN_ERROR stored without a risk decision has no process snapshot.
+
+    A wrong password or an unknown user fails before AMFA's step runs, so the
+    event has no auth_process, but the webhook still wrote its address,
+    country and VPN flag to location_network. Without that source the event
+    reports no IP, no country and no VPN flag.
     """
     s = sql(MonitoringRepository.build_events_query("acme"))
-    assert s.count("LEFT OUTER JOIN") == 2
-    assert "auth_process" in s and "auth_context" in s
+    # Joined only where there is no process, so a scored event keeps reading its
+    # snapshot and the aggregates do not pay for the join on every row.
+    assert (
+        "auth_process.id IS NULL AND location_network.hash = "
+        "auth_event.network_location_hash" in s
+    )
+    for column in ("ip_address", "country", "is_vpn_flag", "lat", "long"):
+        assert f"location_network.{column}" in s
+    # The engine stores a country it could not resolve as the text "None".
+    assert "'None'" in s
+
+
+def test_geo_places_a_failed_login_by_its_network_location():
+    """An unscored failure has coordinates only in location_network."""
+    s = sql(MonitoringRepository.build_geo_query("acme"))
+    assert "location_network.lat" in s and "location_network.long" in s
+
+
+def test_mssql_failed_login_vpn_flag_compiles_as_a_value():
+    """SQL Server has no boolean expressions in COALESCE, so the flag goes
+    through a CASE that yields 1, 0 or NULL."""
+    s = sql_mssql(MonitoringRepository.build_events_query("acme", is_vpn=True))
+    assert "CASE WHEN (location_network.is_vpn_flag IS NULL) THEN NULL" in s
 
 
 def test_events_query_is_realm_scoped_from_both_sources():
@@ -79,13 +116,18 @@ def test_events_query_descending_reverses_both_columns():
     assert "ORDER BY auth_event.event_time DESC, auth_event.id DESC" in s
 
 
-def test_cursor_uses_row_value_comparison():
-    """The keyset predicate must compare the pair, not just the timestamp."""
+def test_cursor_uses_row_value_comparison(monkeypatch):
+    """The keyset predicate must compare the pair, not just the timestamp.
+
+    On Postgres as a row comparison, which the realm index serves as one
+    range: the expanded OR form makes every page start at the beginning of the
+    realm's range, so a page costs more the further it is.
+    """
+    monkeypatch.setenv("DB_TYPE", "postgresql")
     cursor = encode_cursor(datetime(2026, 8, 19, 4, 12, tzinfo=timezone.utc), "44444444-4444-4444-8444-444444444401")
     s = sql(MonitoringRepository.build_events_query("acme", cursor=cursor))
-    assert "auth_event.event_time >" in s
-    assert "OR" in s
-    assert "auth_event.id >" in s
+    assert s.count("(auth_event.event_time, auth_event.id) > (") == 2
+    assert "auth_event.event_time > " not in s
 
 
 def test_cursor_direction_follows_sort_order():
@@ -94,8 +136,8 @@ def test_cursor_direction_follows_sort_order():
     desc = sql(
         MonitoringRepository.build_events_query("acme", cursor=cursor, ascending=False)
     )
-    assert "auth_event.event_time >" in asc
-    assert "auth_event.event_time <" in desc
+    assert "(auth_event.event_time, auth_event.id) > (" in asc
+    assert "(auth_event.event_time, auth_event.id) < (" in desc
 
 
 def test_mssql_cursor_expands_row_comparison():
@@ -273,6 +315,9 @@ def test_stats_vpn_and_ip_both_read_through_the_fallback():
     s = sql(MonitoringRepository.build_stats_query("acme"))
     assert "->> 'is_vpn'" in s
     assert "->> 'ip_address'" in s
+    # A failed login AMFA never scored has only its network location.
+    assert "location_network.is_vpn_flag" in s
+    assert "location_network.ip_address" in s
 
 
 def test_stats_risky_uses_the_shared_threshold():
@@ -422,7 +467,8 @@ def test_every_aggregate_is_realm_scoped():
 
 def test_every_aggregate_joins_outer():
     """An inner join to auth_context would return nothing at all, since that
-    table is never populated.
+    table is never populated, and one to location_network would drop events
+    that have no network location.
     """
     for stmt in (
         MonitoringRepository.build_stats_query("acme"),
@@ -430,7 +476,7 @@ def test_every_aggregate_joins_outer():
         MonitoringRepository.build_risky_users_query("acme"),
         MonitoringRepository.build_event_count_query("acme", "LOGIN"),
     ):
-        assert sql(stmt).count("LEFT OUTER JOIN") == 2
+        assert sql(stmt).count("LEFT OUTER JOIN") == 3
 
 
 def test_realm_or_clause_is_parenthesized_against_other_filters():
@@ -438,15 +484,71 @@ def test_realm_or_clause_is_parenthesized_against_other_filters():
 
     Left unparenthesized, `realm_a OR realm_b AND event_time > x` parses as
     `realm_a OR (realm_b AND ...)`, and the first branch would return every
-    realm's rows regardless of the window.
+    realm's rows regardless of the window. The count still uses it; the
+    events query reads each source in its own branch.
     """
     s = sql(
-        MonitoringRepository.build_events_query(
+        MonitoringRepository.build_events_count_query(
             "acme",
             since=datetime(2026, 8, 1, tzinfo=timezone.utc),
             event_type="LOGIN",
         )
     )
-    where = s.split("WHERE")[1].split("ORDER BY")[0]
+    where = s.split("WHERE")[1]
     assert where.strip().startswith("(")
     assert ") AND auth_event.event_time > " in where
+
+
+def test_events_query_reads_each_realm_source_in_its_own_branch(monkeypatch):
+    """The realm stamped on the event and the one on its auth_process are read
+    in separate branches. One WHERE over both kept Postgres off the realm
+    index, so every page scanned the realm; alone, the first is one range of
+    ix_auth_event_realm_id_event_time_id. Each branch carries every filter.
+    """
+    monkeypatch.setenv("DB_TYPE", "postgresql")
+    s = sql(
+        MonitoringRepository.build_events_query(
+            "acme", since=datetime(2026, 8, 1, tzinfo=timezone.utc), event_type="LOGIN", limit=25
+        )
+    )
+    assert s.count("UNION ALL") == 1
+    on_event, fallback = s.split("UNION ALL")
+    assert "NULLIF(auth_event.realm_id, '') = 'acme'" in on_event
+    assert "auth_context_json" not in on_event.split("WHERE")[1]
+    assert "NULLIF(auth_event.realm_id, '') IS NULL" in fallback
+    assert "auth_event.auth_process IS NOT NULL" in fallback
+    assert "'realm_id'" in fallback.split("WHERE")[1]
+    for branch in (on_event, fallback):
+        where = branch.split("WHERE")[1]
+        assert " OR " not in where.split("ORDER BY")[0]
+        assert "auth_event.event_time > '2026-08-01" in where
+        assert "auth_event.event_type = 'LOGIN'" in where
+        assert "LIMIT 25" in branch
+    assert s.rstrip().endswith("LIMIT 25")
+
+
+def test_mssql_events_query_keeps_one_where(monkeypatch):
+    """SQL Server serves the single query from its realm index and plans the
+    split worse, so on DB_TYPE=mssql the events query stays one SELECT, with
+    the cursor in the expanded OR form (no row comparison in T-SQL)."""
+    monkeypatch.setenv("DB_TYPE", "mssql")
+    cursor = encode_cursor(datetime(2026, 8, 19, tzinfo=timezone.utc), "44444444-4444-4444-8444-444444444401")
+    s = sql_mssql(MonitoringRepository.build_events_query("acme", cursor=cursor, limit=25))
+    assert s.count("TOP 25") == 1
+    assert "UNION" not in s
+    assert "(auth_event.event_time, auth_event.id)" not in s
+    assert s.count("auth_event.event_time > ") == 1
+    assert "auth_event.realm_id = 'acme' OR" in s
+    assert "auth_process IS NOT NULL" not in s
+    assert "= 1 = 1" not in s
+
+
+def test_postgres_split_events_query_still_compiles_on_mssql(monkeypatch):
+    """The split query stays valid T-SQL (TOP in each derived table), should
+    a SQL Server ever be given it."""
+    monkeypatch.setenv("DB_TYPE", "postgresql")
+    cursor = encode_cursor(datetime(2026, 8, 19, tzinfo=timezone.utc), "44444444-4444-4444-8444-444444444401")
+    s = sql_mssql(MonitoringRepository.build_events_query("acme", cursor=cursor, limit=25))
+    assert s.count("TOP 25") == 3
+    assert s.count("UNION ALL") == 1
+    assert "= 1 = 1" not in s
