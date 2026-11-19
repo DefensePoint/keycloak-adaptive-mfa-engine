@@ -328,6 +328,36 @@ async def test_event_pages_merge_both_realm_sources_in_order():
             assert seen == expected, (since, ascending)
 
 
+async def test_event_pages_walk_server_stamped_times_once():
+    """The engine never sets event_time: the database stamps it. Pages must
+    still return every event once, in both directions. SQL Server stamped
+    100 ns, which the driver reads back as microseconds, so the cursor fell
+    just before its own row: an ascending walk returned rows again, and a
+    descending one skipped them."""
+    ids = []
+    for batch in range(4):
+        events = [
+            AuthEvent(id=uuid.uuid4(), user_id=uuid.uuid4(), realm_id="prod", event_type="LOGIN_ERROR")
+            for _ in range(5)
+        ]
+        await _add(*events)
+        ids += [e.id for e in events]
+    for ascending in (True, False):
+        seen, cursor = [], None
+        # A cursor that falls before its own row never advances: stop after
+        # more pages than a correct walk needs.
+        for _ in range(len(ids)):
+            rows, _, cursor = await MonitoringRepository.list_events(
+                "prod", limit=3, cursor=cursor, ascending=ascending
+            )
+            seen += [r["event_id"] for r in rows]
+            if cursor is None:
+                break
+        assert cursor is None, ("never ended", ascending)
+        assert len(seen) == len(set(seen)), ("repeated", ascending)
+        assert set(seen) == set(ids), ("missing", ascending)
+
+
 async def test_first_page_reports_the_total_and_later_pages_skip_it():
     for i in range(3):
         await _seed_login(event_time=T0 + timedelta(seconds=i))
