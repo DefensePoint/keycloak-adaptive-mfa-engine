@@ -256,6 +256,12 @@ DROP_DOWN_DECAY_STEPS = int(os.getenv(key="DROP_DOWN_DECAY_STEPS", default=2))
 
 TIME_ZONE = os.getenv(key="TIME_ZONE", default="Europe/Lisbon")
 
+# Minimum same-day-type login history required before the time-of-day check can
+# flag a login as HIGH. Below this, the hour-of-day histogram is too sparse to
+# be trustworthy (almost any not-yet-seen hour looks anomalous), so the check
+# stays inconclusive (LOW) until enough samples accrue.
+DATETIME_MIN_SAMPLES = int(os.getenv(key="DATETIME_MIN_SAMPLES", default=20))
+
 
 N_ROWS_TO_KEEP = int(os.getenv(key="N_ROWS_TO_KEEP", default=10))
 

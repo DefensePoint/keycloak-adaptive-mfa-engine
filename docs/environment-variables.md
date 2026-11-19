@@ -173,6 +173,7 @@ treated as a very unfamiliar context and risk is forced up.
 | `DEFAULT_INACTIVE_DAYS` | `40`            | Days of inactivity before flagging an account as inactive           |
 | `MIN_AUTH_EVENTS`       | `4`             | Minimum number of past events required before clustering is applied |
 | `DEVICE_SIGNAL_INCLUDE_BROWSER_VERSION` | `false` | Include the browser major version in the browser/device signal. Default `false` (family only) so routine browser auto-updates are not treated as a changed device |
+| `DATETIME_MIN_SAMPLES`  | `20`            | Minimum same-day-type login history before the time-of-day check can flag a login HIGH; below this the hour-of-day histogram is too sparse to be reliable, so it stays LOW |
 | `MAX_AUTH_EVENTS`       | `500`           | Maximum number of events retrieved per user for evaluation          |
 | `TIME_ZONE`             | `Europe/Lisbon` | Timezone applied to datetime-based risk checks                      |
 | `IMPOSSIBLE_TRAVEL_MAX_SPEED_KMH`     | `900` | Absolute speed cap for impossible-travel; a leg above it is always impossible |
