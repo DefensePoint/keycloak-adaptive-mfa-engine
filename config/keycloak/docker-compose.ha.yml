@@ -277,7 +277,8 @@ services:
 
   # ── nginx — load balancer and TLS terminator ────────────────────────────────
   nginx:
-    image: nginx:1.27-alpine
+    # 1.27.3 or later: nginx-ha.conf re-resolves the engines with `resolve`.
+    image: nginx:1.27.5-alpine
     ports:
       # Same host ports as the single-node stack — no URL changes needed.
       - "8443:8443"   # Keycloak HTTPS (load balanced across keycloak-1 and -2)
