@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On SQL Server, paging through `/{realm}/monitoring/events` returns each event once. `event_time` was stamped to 100 ns and read back to the microsecond, so a page cursor fell just before its own row: walking oldest first returned events again, and newest first could skip them. Migration `94c441a0b691` stamps microseconds from now on and truncates existing times to the microsecond the engine has always read. It rewrites those rows, and `event_time` leads the clustered index, so on a large SQL Server database the upgrade takes longer than usual. PostgreSQL is unchanged.
 - A database user or password containing a space works, on PostgreSQL and SQL Server. The space reached the database as `+`, so the engine could not sign in and did not start.
 - The monitoring endpoints report the IP address, country and VPN flag of a failed login the engine stored without a risk decision, such as a wrong password or an unknown user. They read the location the webhook stored for the event; before, such a failure showed no IP, no country and no VPN flag, and a failed login from a VPN address did not count in `flagged_ips`. These failures have no coordinates, so they are still not on the map.
 - Image lock file pins SQLAlchemy 2.0.54 so `mssql+aioodbc` loads (added in 2.0.23). CI installs from the same lock file and runs the unit suite against SQL Server.
