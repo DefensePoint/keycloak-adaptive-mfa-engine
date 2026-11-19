@@ -141,6 +141,30 @@ curl http://localhost:8095/health
 docker start amfa-ha-adaptive_auth_1-1
 ```
 
+### Engine replica recreated
+
+Recreating a replica, as `docker compose up --build` or `--force-recreate`
+does, can give it a new IP address. nginx looks the engine hostnames up again
+every 10 seconds (`resolve` on the upstream servers, `resolver ... valid=10s`),
+so it sends traffic to the new address without a restart:
+
+```bash
+# Recreate both replicas
+docker compose -f config/keycloak/docker-compose.ha.yml up -d --force-recreate --no-deps adaptive_auth_1 adaptive_auth_2
+
+# Within about 10 seconds the engine responds through nginx again
+curl http://localhost:8095/health
+```
+
+For up to 10 seconds after a recreate, nginx may still send requests to a
+replica's old address. If nothing answers there and the other replica is up,
+nginx retries the request on it. Otherwise the request fails, and the Keycloak
+plugin handles it as it does any engine outage: by the realm's
+`adaptiveAuthFailureMode` (in `advisory` mode, the login gets `fallbackRisk`;
+see [Keycloak setup](keycloak-setup.md)). Before nginx re-resolved the engines,
+this lasted until nginx was restarted, and requests could reach whatever
+container was given an old address.
+
 ### Keycloak node failover
 
 Before killing a node, confirm that Infinispan has actually replicated sessions
@@ -196,7 +220,7 @@ should address them:
 |---|---|---|
 | PostgreSQL | Single node | Streaming replication (primary + standby) with a connection pooler such as PgBouncer or a managed service |
 | Redis | Single node | Redis Sentinel (3 nodes) or Redis Cluster |
-| nginx | Single node | Two nginx instances behind a floating IP (keepalived) or a cloud load balancer |
+| nginx | Single node | Two nginx instances behind a floating IP (keepalived) or a cloud load balancer. Whatever balances the engines and Keycloak nodes must follow their addresses when they change: re-resolve them as `nginx-ha.conf` does for the engines, or reload it on every change |
 | mkcert TLS certificate | Self-signed, dev only | Certificate from a trusted CA or an internal PKI |
 
 ## Switching back to the single-node stack
@@ -215,6 +239,14 @@ do not share data and can coexist on the same machine.
 some production hardening (theme caching, strict hostname checks). This is
 intentional for a testable HA setup. A production deployment should use `start`
 with a pre-built optimised image (`Dockerfile.keycloak`).
+
+**Keycloak nodes are resolved once.** nginx looks the Keycloak node hostnames
+(`keycloak-1`, `keycloak-2`) up only when it starts. After recreating a
+Keycloak node, restart nginx so it uses the node's new address:
+
+```bash
+docker compose -f config/keycloak/docker-compose.ha.yml restart nginx
+```
 
 **End-to-end test suite.** The e2e suite reads log output from a single container
 by name (e.g. `amfa-adaptive_auth-1`). Against the HA stack the engine runs as
