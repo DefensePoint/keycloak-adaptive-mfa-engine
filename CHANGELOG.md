@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A database user or password containing a space works, on PostgreSQL and SQL Server. The space reached the database as `+`, so the engine could not sign in and did not start.
 - The monitoring endpoints report the IP address, country and VPN flag of a failed login the engine stored without a risk decision, such as a wrong password or an unknown user. They read the location the webhook stored for the event; before, such a failure showed no IP, no country and no VPN flag, and a failed login from a VPN address did not count in `flagged_ips`. These failures have no coordinates, so they are still not on the map.
 - Image lock file pins SQLAlchemy 2.0.54 so `mssql+aioodbc` loads (added in 2.0.23). CI installs from the same lock file and runs the unit suite against SQL Server.
 - Boolean and keyset filters no longer compile to `col = 1 = 1` on SQL Server, so login scoring, configuration activation, VPN filters, and monitoring paging work there.
