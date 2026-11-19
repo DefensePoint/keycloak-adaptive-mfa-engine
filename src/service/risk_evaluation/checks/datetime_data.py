@@ -4,6 +4,8 @@ import scipy.stats
 from sklearn import preprocessing
 from datetime import datetime
 
+from src.core.config.environment import DATETIME_MIN_SAMPLES
+
 
 def process_datetime_data(df_user: pd.DataFrame, current_event_dict: dict) -> str:
     """
@@ -73,6 +75,15 @@ def process_datetime_data(df_user: pd.DataFrame, current_event_dict: dict) -> st
 
     if n_logins_current_hour <= 3:
         df_prob = df_user[df_user["day_type"] == current_day_type]
+
+        # Not enough same-day-type history to build a trustworthy hour-of-day
+        # distribution. A sparse histogram makes almost any not-yet-seen hour
+        # look anomalous (prob_hazard ~= 1 for every low-density hour), so the
+        # check would over-flag ordinary logins. Stay inconclusive (LOW) until
+        # enough samples accrue. This also avoids an all-NaN histogram when
+        # df_prob is empty (e.g. the user's first weekend login).
+        if len(df_prob) < DATETIME_MIN_SAMPLES:
+            return "LOW"
 
         T = np.linspace(0, 23, 24)
         hist = np.histogram(
