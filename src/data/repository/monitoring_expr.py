@@ -58,13 +58,17 @@ def realm_filter(realm_id: str):
     a2b3c4d5e6f7 (which stamps it directly at write time going forward): the
     two sources never disagree for rows that have both.
     """
-    return or_(
-        NullIfEq(AuthEvent.realm_id, realm_id),
-        and_(
-            EmptyAsNull(AuthEvent.realm_id),
-            realm_id_expr == realm_id,
-        ),
-    )
+    return or_(realm_on_event(realm_id), realm_fallback(realm_id))
+
+
+def realm_on_event(realm_id: str):
+    """The realm stamped on the event itself: what the realm index serves."""
+    return NullIfEq(AuthEvent.realm_id, realm_id)
+
+
+def realm_fallback(realm_id: str):
+    """An event with no realm of its own, matched through its auth_process."""
+    return and_(EmptyAsNull(AuthEvent.realm_id), realm_id_expr == realm_id)
 
 
 # --- login context --------------------------------------------------------
