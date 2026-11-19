@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- On PostgreSQL, `/{realm}/monitoring/events` reads a page from the realm index instead of scanning the realm: with 2 million events, a page of 100 takes about 1 ms instead of 25 to 40 ms, wherever the cursor is. The cursor is a row comparison, and events with a realm of their own and events matched through their auth_process are read in separate branches. The pages are the same as before. SQL Server keeps its query, which it already serves from its realm index.
 - The published image's lock file moves 60 packages: 54 upgraded and 6 added. The largest moves are FastAPI 0.109 to 0.162, Starlette 0 to 1 (0.35.1 to 1.10.0), Uvicorn 0.21 to 0.53, redis 5 to 8, and cryptography 44 to 50.
 - Startup and shutdown run through a FastAPI lifespan handler, because Starlette 1 removed `add_event_handler`.
 - CI installs `requirements.in` and the image lock file in separate jobs, and fails when an installed version does not satisfy `requirements.in`.

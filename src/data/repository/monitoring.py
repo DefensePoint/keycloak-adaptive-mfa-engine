@@ -10,11 +10,11 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, select, union_all
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.core.database import DB
-from src.core.sql_dialect import bool_is, row_compare
+from src.core.sql_dialect import bool_is, db_type, row_compare
 from src.data.model import AuthContext, AuthEvent, AuthProcess, LocationNetwork
 from src.data.repository import monitoring_expr as expr
 
@@ -110,6 +110,28 @@ def _joined(stmt):
     )
 
 
+def _single_events_query(
+    realm_id, since, until, event_type, min_risk, risk_decision, is_vpn, limit, cursor_key, ascending
+):
+    """The events query with both realm sources in one WHERE (SQL Server)."""
+    stmt = _apply_filters(
+        _joined(select(*_base_columns())),
+        realm_id, since, until, event_type, min_risk, risk_decision, is_vpn,
+    )
+    if cursor_key:
+        stmt = stmt.where(
+            row_compare(AuthEvent.event_time, AuthEvent.id, *cursor_key, greater=ascending)
+        )
+    return stmt.order_by(*_event_order(AuthEvent.event_time, AuthEvent.id, ascending)).limit(limit)
+
+
+def _event_order(event_time, event_id, ascending: bool):
+    """`(event_time, id)` in the page's direction."""
+    if ascending:
+        return event_time.asc(), event_id.asc()
+    return event_time.desc(), event_id.desc()
+
+
 def _apply_window(stmt, since: Optional[datetime], until: Optional[datetime]):
     """Apply the time-window filter every monitoring query accepts.
 
@@ -133,9 +155,16 @@ def _apply_filters(
     min_risk: Optional[int],
     risk_decision: Optional[int],
     is_vpn: Optional[bool],
+    realm_condition=None,
 ):
-    """Filters shared by the listing query and its matching count."""
-    stmt = _apply_window(stmt.where(expr.realm_filter(realm_id)), since, until)
+    """Filters shared by the listing query and its matching count.
+
+    `realm_condition` replaces the realm filter, for a query split by where
+    the realm comes from.
+    """
+    if realm_condition is None:
+        realm_condition = expr.realm_filter(realm_id)
+    stmt = _apply_window(stmt.where(realm_condition), since, until)
     if event_type is not None:
         stmt = stmt.where(AuthEvent.event_type == event_type)
     if min_risk is not None:
@@ -168,32 +197,57 @@ class MonitoringRepository:
         Ordering is `(event_time, id)`, never `event_time` alone: two events
         can share a timestamp, and a partial sort lets a paging consumer skip
         or repeat rows.
+
+        The realm comes from the event itself or, for an event with none,
+        from its auth_process. On Postgres, filtering on either in one WHERE
+        kept the realm index unused, so every page scanned the realm. There
+        each source is its own branch, ordered and limited, so the first reads
+        one range of the realm index; the second finds the events without a
+        realm of their own, which the engine stamps on every event it writes.
+        The branches never match the same event, and the page is the first
+        `limit` rows of the two. SQL Server already serves the single query
+        from its realm index and plans the split worse, so it keeps it.
         """
         limit = normalize_limit(limit)
-
-        stmt = _joined(select(*_base_columns()))
-        stmt = _apply_filters(
-            stmt, realm_id, since, until, event_type, min_risk, risk_decision, is_vpn
-        )
-
-        if cursor:
-            cur_time, cur_id = decode_cursor(cursor)
-            stmt = stmt.where(
-                row_compare(
-                    AuthEvent.event_time,
-                    AuthEvent.id,
-                    cur_time,
-                    cur_id,
-                    greater=ascending,
-                )
+        cursor_key = decode_cursor(cursor) if cursor else None
+        if db_type() == "mssql":
+            return _single_events_query(
+                realm_id, since, until, event_type, min_risk, risk_decision, is_vpn,
+                limit, cursor_key, ascending,
             )
 
-        order = (
-            (AuthEvent.event_time.asc(), AuthEvent.id.asc())
-            if ascending
-            else (AuthEvent.event_time.desc(), AuthEvent.id.desc())
+        def branch(realm_condition):
+            stmt = _apply_filters(
+                _joined(select(*_base_columns())),
+                realm_id, since, until, event_type, min_risk, risk_decision, is_vpn,
+                realm_condition=realm_condition,
+            )
+            if cursor_key:
+                stmt = stmt.where(
+                    row_compare(
+                        AuthEvent.event_time,
+                        AuthEvent.id,
+                        *cursor_key,
+                        greater=ascending,
+                    )
+                )
+            return stmt.order_by(*_event_order(AuthEvent.event_time, AuthEvent.id, ascending)).limit(limit)
+
+        # Each branch is a derived table: SQL Server accepts ORDER BY with TOP
+        # there, not in a bare UNION member.
+        on_event = branch(expr.realm_on_event(realm_id)).subquery("on_event")
+        # An event without a process cannot match the fallback. Excluded
+        # before the join, the old failed logins a migrated database keeps,
+        # with neither a realm nor a process, are not joined on every page.
+        fallback = branch(
+            and_(expr.realm_fallback(realm_id), AuthEvent.auth_process.isnot(None))
+        ).subquery("fallback")
+        page = union_all(select(on_event), select(fallback)).subquery("page")
+        return (
+            select(page)
+            .order_by(*_event_order(page.c.event_time, page.c.event_id, ascending))
+            .limit(limit)
         )
-        return stmt.order_by(*order).limit(limit)
 
     @staticmethod
     def build_events_count_query(
