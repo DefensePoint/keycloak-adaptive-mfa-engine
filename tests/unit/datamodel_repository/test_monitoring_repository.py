@@ -41,13 +41,14 @@ def sql_mssql(stmt) -> str:
     )
 
 
-def test_events_query_joins_all_four_tables_outer():
+def test_events_query_joins_all_four_tables_outer(monkeypatch):
     """auth_process, auth_context and location_network must all be LEFT JOINed.
 
     An inner join to auth_process would drop every event whose process never
     linked, and auth_context is never populated at all, so an inner join there
     would return nothing whatsoever. location_network is optional on an event.
     """
+    monkeypatch.setenv("DB_TYPE", "postgresql")
     s = sql(MonitoringRepository.build_events_query("acme"))
     # Three in each realm branch.
     assert s.count("LEFT OUTER JOIN") == 6
@@ -115,13 +116,14 @@ def test_events_query_descending_reverses_both_columns():
     assert "ORDER BY auth_event.event_time DESC, auth_event.id DESC" in s
 
 
-def test_cursor_uses_row_value_comparison():
+def test_cursor_uses_row_value_comparison(monkeypatch):
     """The keyset predicate must compare the pair, not just the timestamp.
 
     On Postgres as a row comparison, which the realm index serves as one
     range: the expanded OR form makes every page start at the beginning of the
     realm's range, so a page costs more the further it is.
     """
+    monkeypatch.setenv("DB_TYPE", "postgresql")
     cursor = encode_cursor(datetime(2026, 8, 19, 4, 12, tzinfo=timezone.utc), "44444444-4444-4444-8444-444444444401")
     s = sql(MonitoringRepository.build_events_query("acme", cursor=cursor))
     assert s.count("(auth_event.event_time, auth_event.id) > (") == 2
@@ -497,12 +499,13 @@ def test_realm_or_clause_is_parenthesized_against_other_filters():
     assert ") AND auth_event.event_time > " in where
 
 
-def test_events_query_reads_each_realm_source_in_its_own_branch():
+def test_events_query_reads_each_realm_source_in_its_own_branch(monkeypatch):
     """The realm stamped on the event and the one on its auth_process are read
     in separate branches. One WHERE over both kept Postgres off the realm
     index, so every page scanned the realm; alone, the first is one range of
     ix_auth_event_realm_id_event_time_id. Each branch carries every filter.
     """
+    monkeypatch.setenv("DB_TYPE", "postgresql")
     s = sql(
         MonitoringRepository.build_events_query(
             "acme", since=datetime(2026, 8, 1, tzinfo=timezone.utc), event_type="LOGIN", limit=25
@@ -540,9 +543,10 @@ def test_mssql_events_query_keeps_one_where(monkeypatch):
     assert "= 1 = 1" not in s
 
 
-def test_postgres_split_events_query_still_compiles_on_mssql():
+def test_postgres_split_events_query_still_compiles_on_mssql(monkeypatch):
     """The split query stays valid T-SQL (TOP in each derived table), should
     a SQL Server ever be given it."""
+    monkeypatch.setenv("DB_TYPE", "postgresql")
     cursor = encode_cursor(datetime(2026, 8, 19, tzinfo=timezone.utc), "44444444-4444-4444-8444-444444444401")
     s = sql_mssql(MonitoringRepository.build_events_query("acme", cursor=cursor, limit=25))
     assert s.count("TOP 25") == 3
