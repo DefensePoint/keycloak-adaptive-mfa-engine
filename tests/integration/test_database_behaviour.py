@@ -282,6 +282,52 @@ async def test_event_pages_walk_every_row_once_in_both_directions():
         assert len(seen) == len(set(seen))
 
 
+async def test_event_pages_merge_both_realm_sources_in_order():
+    """Events with a realm of their own and events matched through their
+    auth_process are read in separate branches. Interleaved in time, with
+    shared timestamps and another realm's events around them, every page walk
+    must return exactly the rows, in the order, of one unpaged query with the
+    combined realm filter."""
+    own, legacy = [], []
+    for i in range(12):
+        event = await _seed_login(event_time=T0 + timedelta(seconds=i // 3))
+        if i % 3 == 1:
+            legacy.append(event.id)
+        else:
+            own.append(event.id)
+        await _seed_login(realm="other", event_time=T0 + timedelta(seconds=i // 3))
+    async with DB.get_session()() as session:
+        for event_id in legacy:
+            row = await session.get(AuthEvent, event_id)
+            row.realm_id = None if DB_TYPE == "mssql" else ""
+            process = await session.get(AuthProcess, row.auth_process)
+            process.realm_id = None
+            process.auth_context_json = {"realm_id": "prod"}
+        await session.commit()
+
+    for since in (None, T0 + timedelta(seconds=1)):
+        for ascending in (True, False):
+            direction = (AuthEvent.event_time, AuthEvent.id) if ascending else (
+                AuthEvent.event_time.desc(), AuthEvent.id.desc())
+            reference = select(AuthEvent.id).outerjoin(
+                AuthProcess, AuthProcess.id == AuthEvent.auth_process
+            ).where(monitoring_expr.realm_filter("prod"))
+            if since is not None:
+                reference = reference.where(AuthEvent.event_time > since)
+            async with DB.get_session()() as session:
+                expected = list((await session.execute(reference.order_by(*direction))).scalars())
+            seen, cursor = [], None
+            while True:
+                rows, _, cursor = await MonitoringRepository.list_events(
+                    "prod", since=since, limit=3, cursor=cursor, ascending=ascending
+                )
+                seen += [r["event_id"] for r in rows]
+                if cursor is None:
+                    break
+            assert len(expected) == (12 if since is None else 6)
+            assert seen == expected, (since, ascending)
+
+
 async def test_first_page_reports_the_total_and_later_pages_skip_it():
     for i in range(3):
         await _seed_login(event_time=T0 + timedelta(seconds=i))

@@ -10,7 +10,7 @@ import os
 import re
 from urllib.parse import quote_plus, urlencode
 
-from sqlalchemy import Boolean, String, Unicode, UnicodeText, and_, literal, or_, text
+from sqlalchemy import Boolean, String, Unicode, UnicodeText, literal, text
 from sqlalchemy.dialects.mssql import NVARCHAR, VARCHAR
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.expression import FunctionElement
@@ -128,15 +128,51 @@ def bool_is(column, value: bool):
     return column == bool(value)
 
 
-def row_compare(col_a, col_b, val_a, val_b, *, greater: bool):
-    """Keyset pagination predicate, portable across Postgres and SQL Server.
+class _RowCompare(FunctionElement):
+    """`(col_a, col_b) > (val_a, val_b)`, or `<` in `_RowLess`.
 
-    A Boolean FunctionElement wrapping the comparison is compiled with an extra
+    Postgres compiles it as a row comparison, which an index on the two
+    columns serves as one range: every page of a keyset walk then reads about
+    the same number of rows. The expanded `a > x OR a = x AND b > y` form
+    makes it start at the beginning of the range and filter, so a page costs
+    more the further it is from the start. SQL Server has no row comparison,
+    so it gets the expanded form.
+
+    Not typed Boolean: a Boolean FunctionElement is compiled with an extra
     `= 1` on SQL Server (`Incorrect syntax near '='`).
     """
-    if greater:
-        return or_(col_a > val_a, and_(col_a == val_a, col_b > val_b))
-    return or_(col_a < val_a, and_(col_a == val_a, col_b < val_b))
+
+    inherit_cache = True
+    operator = ">"
+
+    def __init__(self, col_a, col_b, val_a, val_b):
+        super().__init__(
+            col_a, col_b, literal(val_a, type_=col_a.type), literal(val_b, type_=col_b.type)
+        )
+
+
+class _RowLess(_RowCompare):
+    inherit_cache = True
+    operator = "<"
+
+
+@compiles(_RowCompare)
+def _row_compare_expanded(element, compiler, **kw):
+    a, b, x, y = (compiler.process(clause, **kw) for clause in element.clauses)
+    op = element.operator
+    return f"({a} {op} {x} OR {a} = {x} AND {b} {op} {y})"
+
+
+@compiles(_RowCompare, "postgresql")
+def _row_compare_pg(element, compiler, **kw):
+    a, b, x, y = (compiler.process(clause, **kw) for clause in element.clauses)
+    return f"({a}, {b}) {element.operator} ({x}, {y})"
+
+
+def row_compare(col_a, col_b, val_a, val_b, *, greater: bool):
+    """Keyset pagination predicate: a row comparison on Postgres, the
+    expanded OR form on SQL Server. See `_RowCompare`."""
+    return (_RowCompare if greater else _RowLess)(col_a, col_b, val_a, val_b)
 
 
 def _check_json_key(key: str) -> str:
