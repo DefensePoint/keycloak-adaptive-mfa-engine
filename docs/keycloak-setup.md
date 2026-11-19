@@ -170,6 +170,23 @@ curl -X PUT "$KEYCLOAK/admin/realms/$REALM/events/config" \
   -d '{"eventsListeners":["jboss-logging","amfa-webhook"]}'
 ```
 
+With plugin 1.1.0 or later, also register its **AMFA details on login events**
+required action (**Authentication → Required actions**, register it and leave
+it enabled). Keycloak does not register a plugin's required actions by
+itself. Without it, a login that ends with a required action, such as TOTP
+setup, reaches the engine without its user agent, screen resolution and
+locale, so the engine records an unknown device for it. With it, the LOGIN
+events Keycloak stores for such logins, and for logins through an identity
+provider, also carry the AMFA details, such as the risk level and
+`amfa_event_id`. The action never shows the user a page. The test realm in
+`config/keycloak` registers it.
+
+```bash
+curl -X POST "$KEYCLOAK/admin/realms/$REALM/authentication/register-required-action" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"providerId":"amfa-login-event-details","name":"AMFA details on login events"}'
+```
+
 The listener also needs the AMFA authenticators bound into the realm's browser
 flow, so that each login captures the authentication context the webhook
 reports. In the "forms" subflow, set these as REQUIRED **in this order**, the
@@ -384,16 +401,18 @@ What AMFA does not see for these users:
 
 - A wrong password at the identity provider. The attempt never reaches
   Keycloak; the provider handles it, including its own lockout.
-- A wrong TOTP or email code. Keycloak emits no event for it, for local users
-  either, so the engine does not learn of it. Keycloak's brute-force
-  protection still counts it.
+- A wrong TOTP or email code, with plugin 1.0.1 or earlier: its AMFA steps
+  emit no event for it, for local users either, so the engine does not learn
+  of it. From plugin 1.1.0 each wrong code on those steps is a `LOGIN_ERROR`
+  that the engine counts among the user's failed logins. Keycloak's
+  brute-force protection counts it either way.
 
 !!! note
     The engine records device data (browser, OS, screen, language) for these
     logins, and records a refused login against its user, only with a Keycloak
-    plugin that carries them onto brokered login events. No plugin release
-    does that yet (the latest is 1.0.1). Until one does, the login is still
-    scored and stepped up, but the engine stores it without device data, and a
+    plugin that carries them onto brokered login events: the Adaptive MFA
+    plugin does from 1.1.0. With 1.0.1 or earlier, the login is still scored
+    and stepped up, but the engine stores it without device data, and a
     refused one without its user.
 
 ## 8. Verify

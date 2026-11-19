@@ -144,11 +144,11 @@ services:
           echo "$$sum  $$name" | sha256sum -c -
         }
         fetch keycloak-adaptive-mfa.jar \
-          e02bed26dc5e65081880e4ab1dbba6fffe0dfd3b9b81db71e657e1cf497a5448 \
-          "$$SPI_BASE_URL/v1.0.1/keycloak-adaptive-mfa.jar"
+          7bee0e71b82a1d5696ebca4f4063c781e2b9213adfefe9730c7f5552fbf7ba94 \
+          "$$SPI_BASE_URL/v1.1.0/keycloak-adaptive-mfa.jar"
         fetch keycloak-admin-ui-amfa.jar \
-          6d8389a503d8dc912ccb7b0ed39dba1f3f8add98eed0e2af47c350ac4de5e32a \
-          "$$ADMIN_UI_BASE_URL/v1.0.1/keycloak-admin-ui-amfa.jar"
+          bf39d4617a1721ddf00da37bcf7a6c594fd29dde3c5c4b5839466e965669c228 \
+          "$$ADMIN_UI_BASE_URL/v1.1.0/keycloak-admin-ui-amfa.jar"
         # vavr version must match what the pinned SPI release was built against.
         fetch vavr-1.0.1.jar \
           f9ea1043ad66dbd8e0c4dd7b7a9cdce5bf2d86fab1ce33aace1ad4d56bd1270b \
