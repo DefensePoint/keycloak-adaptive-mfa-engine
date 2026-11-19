@@ -63,6 +63,21 @@ def test_mssql_url_uses_odbc_and_encrypts():
     assert "Encrypt=yes" in async_url
 
 
+@pytest.mark.parametrize("db_type_name", ["postgresql", "mssql"])
+def test_credentials_reach_the_driver_as_given(db_type_name):
+    # quote_plus wrote a space as "+", which SQLAlchemy does not decode back,
+    # so a user or password with a space could not sign in.
+    user, password = "amfa svc", "my pass+1@:/#%?&=;{}"
+    for url in build_database_urls(db_type_name, user, password, "db.example", 5432, "adaptive_mfa"):
+        parsed = make_url(url)
+        assert (parsed.username, parsed.password) == (user, password)
+    if db_type_name == "mssql":
+        sync, _ = build_database_urls(db_type_name, user, password, "db.example", 1433, "adaptive_mfa")
+        args, _ = mssql.pyodbc.dialect().create_connect_args(make_url(sync))
+        assert f"UID={user}" in args[0]
+        assert f"PWD={odbc_brace(password)}" in args[0]
+
+
 def test_sqlalchemy_registers_mssql_aioodbc():
     """The image installs from requirements.txt. aioodbc landed in 2.0.23."""
     from sqlalchemy.dialects.mssql import aioodbc

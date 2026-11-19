@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import re
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import quote, urlencode
 
 from sqlalchemy import Boolean, String, Unicode, UnicodeText, literal, text
 from sqlalchemy.dialects.mssql import NVARCHAR, VARCHAR
@@ -92,8 +92,10 @@ def build_database_urls(
     """Return `(sync_url, async_url)` for Alembic and the engine respectively."""
     if authentication == MSSQL_MANAGED_IDENTITY:
         password = None
-    user_q = quote_plus(user or "")
-    password_q = quote_plus(password or "")
+    # Percent-encoded, so @, :, / or # cannot end the URL early. quote, not
+    # quote_plus: SQLAlchemy does not decode a + back into a space.
+    user_q = quote(user or "", safe="")
+    password_q = quote(password or "", safe="")
     if db_type_name == "mssql":
         options = {
             "driver": odbc_driver,
