@@ -58,14 +58,10 @@ def test_auth_context_without_screen_resolution_is_accepted():
 
 @pytest.mark.asyncio
 async def test_missing_and_empty_screen_resolution_give_the_same_device(mocker):
-    mocker.patch(
-        "src.data.factory.device.get_cached_device_by_hash",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
     create = mocker.patch(
-        "src.data.factory.device.DeviceRepository.create_device",
+        "src.data.factory.device.DeviceRepository.ensure_device",
         new_callable=AsyncMock,
+        return_value=True,
     )
 
     def request(screen):

@@ -1,7 +1,6 @@
 from src.data.schema import DecisionRequest, AuthContextSchema
 from src.utils.data_processing.user_agent import UserAgentInfo
 from src.utils.data_processing.hash import hash_str
-from src.utils.info_provider.device import get_cached_device_by_hash
 from src.data.model import Device
 from src.data.repository import DeviceRepository
 from src.core.config.environment import DEVICE_SIGNAL_INCLUDE_BROWSER_VERSION
@@ -35,10 +34,10 @@ class DeviceFactory:
         content_str = "|".join(attrs)
         device_hash = hash_str(content_str)
 
-        existing_device = await get_cached_device_by_hash(device_hash)
-
-        if not existing_device:
-            new_device = Device(
+        # The database, not a cache, says whether the device is known: every row
+        # stored for this login refers to it.
+        created = await DeviceRepository.ensure_device(
+            Device(
                 hash=device_hash,
                 device=str(agent_info.get_device()),
                 client=str(request.client),
@@ -47,8 +46,8 @@ class DeviceFactory:
                 operating_system=str(agent_info.get_os_family_major()),
                 browser=str(browser_signal),
             )
-            await DeviceRepository.create_device(new_device)
-
+        )
+        if created:
             logging.info(f"Created new device object | hash {device_hash}")
 
         return device_hash
