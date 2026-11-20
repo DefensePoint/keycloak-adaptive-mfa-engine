@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- The engine keeps working when its database is restored, swapped or reset while Redis is kept. The device and network steps asked their Redis cache whether a record existed, so a cached record the database no longer had was never written again: every `/decision`, `/auth_context` and login webhook then failed on the foreign key with HTTP 500 until Redis was flushed, and logins ran only on the plugin's fallback risk. Both steps now ask the database, which costs one read by primary key for a known device or network, and add a missing record. The two caches are removed; their `auth:device:v1:*` and `auth:location_network:v2:*` keys are no longer read and expire within a day.
+
 ## [1.2.0] - 2026-11-19
 
 ### Added

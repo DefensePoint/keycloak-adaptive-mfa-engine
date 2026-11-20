@@ -121,6 +121,46 @@ class LocationNetworkRepository:
             return merged_loc_net
 
     @staticmethod
+    async def ensure_location_network(loc_net: LocationNetwork) -> str:
+        """
+        Makes sure a **LocationNetwork** record with this hash exists in the
+        database, adding it when it is missing. A record that exists is left as
+        it is, except that a record written before it had coordinates gets
+        those of `loc_net`.
+
+        The database decides, not a cache: a hash that names no record (after
+        the database was restored, swapped or reset) gets its record again, so
+        the rows that refer to it can be stored. A known network costs one read
+        by primary key. Two first logins from the same new network that both
+        find no record are handled by `create_location_network`.
+
+        **Parameters**
+        - `loc_net`: The **LocationNetwork** to store when no record has its hash.
+
+        **Returns**
+        - "created" when the record was added, "filled" when an existing record
+          got its coordinates, "kept" when the existing record was left as it is.
+        """
+        existing = await LocationNetworkRepository.get_location_network_by_hash(loc_net.hash)
+        if existing is None:
+            stored = await LocationNetworkRepository.create_location_network(loc_net)
+            if stored is loc_net:
+                return "created"
+            existing = stored
+        if (
+            loc_net.lat is not None
+            and loc_net.long is not None
+            and existing.lat is None
+            and existing.long is None
+            # The hash covers the coordinates, so these are the row's own.
+            and await LocationNetworkRepository.set_coordinates_if_missing(
+                loc_net.hash, loc_net.lat, loc_net.long
+            )
+        ):
+            return "filled"
+        return "kept"
+
+    @staticmethod
     async def set_coordinates_if_missing(loc_net_hash: str, lat: float, long: float) -> bool:
         """
         Gives a **LocationNetwork** row written before it had coordinates its

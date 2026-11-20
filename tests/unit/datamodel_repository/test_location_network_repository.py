@@ -145,3 +145,115 @@ async def test_create_location_network_still_fails_on_other_errors():
 
     with pytest.raises(IntegrityError):
         await LocationNetworkRepository.create_location_network(location_network)
+
+
+# --- ensure_location_network: the database says whether a network is known ---
+
+
+def make_location_network_like(loc_net: LocationNetwork) -> LocationNetwork:
+    """A new LocationNetwork object for the same hash, as the next login builds it."""
+    copy = make_location_network("unused")
+    copy.hash = loc_net.hash
+    return copy
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_location_network_adds_a_missing_network(tracked):
+    loc_net = make_location_network("test-ensure-location-adds")
+
+    created = await LocationNetworkRepository.ensure_location_network(loc_net)
+    tracked.add(LocationNetworkRepository.delete_location_network, loc_net)
+
+    assert created == "created"
+    assert await LocationNetworkRepository.get_location_network_by_hash(loc_net.hash) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_location_network_keeps_a_stored_network_as_it_is(tracked):
+    stored = make_location_network("test-ensure-location-keeps")
+    stored.geolocation_cluster_label = 7
+    await LocationNetworkRepository.create_location_network(stored)
+    tracked.add(LocationNetworkRepository.delete_location_network, stored)
+    again = make_location_network_like(stored)
+    again.geolocation_cluster_label = 0
+
+    created = await LocationNetworkRepository.ensure_location_network(again)
+
+    assert created == "kept"
+    found = await LocationNetworkRepository.get_location_network_by_hash(stored.hash)
+    assert found.geolocation_cluster_label == 7
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_location_network_adds_the_network_again_after_the_database_lost_it(tracked):
+    loc_net = make_location_network("test-ensure-location-lost")
+    await LocationNetworkRepository.ensure_location_network(loc_net)
+    await LocationNetworkRepository.delete_location_network(loc_net)
+
+    created = await LocationNetworkRepository.ensure_location_network(
+        make_location_network_like(loc_net)
+    )
+    tracked.add(LocationNetworkRepository.delete_location_network, loc_net)
+
+    assert created == "created"
+    assert await LocationNetworkRepository.get_location_network_by_hash(loc_net.hash) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_location_network_fills_a_row_written_without_coordinates(tracked):
+    older = make_location_network("test-ensure-location-fills")
+    older.lat, older.long = None, None
+    await LocationNetworkRepository.create_location_network(older)
+    tracked.add(LocationNetworkRepository.delete_location_network, older)
+    located = make_location_network_like(older)
+    located.lat, located.long = 47.38, 8.54
+
+    outcome = await LocationNetworkRepository.ensure_location_network(located)
+
+    assert outcome == "filled"
+    found = await LocationNetworkRepository.get_location_network_by_hash(older.hash)
+    assert (found.lat, found.long) == (pytest.approx(47.38), pytest.approx(8.54))
+    assert found.geolocation_cluster_label == older.geolocation_cluster_label
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_location_network_keeps_coordinates_a_row_has(tracked):
+    stored = make_location_network("test-ensure-location-keeps-coordinates")
+    stored.lat, stored.long = 1.5, 2.5
+    await LocationNetworkRepository.create_location_network(stored)
+    tracked.add(LocationNetworkRepository.delete_location_network, stored)
+    again = make_location_network_like(stored)
+    again.lat, again.long = 9.0, 9.0
+
+    outcome = await LocationNetworkRepository.ensure_location_network(again)
+
+    assert outcome == "kept"
+    found = await LocationNetworkRepository.get_location_network_by_hash(stored.hash)
+    assert (found.lat, found.long) == (pytest.approx(1.5), pytest.approx(2.5))
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_location_network_without_coordinates_leaves_a_row_without_them(tracked):
+    older = make_location_network("test-ensure-location-unplaced")
+    older.lat, older.long = None, None
+    await LocationNetworkRepository.create_location_network(older)
+    tracked.add(LocationNetworkRepository.delete_location_network, older)
+
+    outcome = await LocationNetworkRepository.ensure_location_network(make_location_network_like(older))
+
+    assert outcome == "kept"
+    found = await LocationNetworkRepository.get_location_network_by_hash(older.hash)
+    assert found.lat is None and found.long is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_location_network_twice_at_once_keeps_one_row(tracked):
+    loc_net = make_location_network("test-ensure-location-race")
+
+    results = await asyncio.gather(
+        *(LocationNetworkRepository.ensure_location_network(make_location_network_like(loc_net)) for _ in range(5))
+    )
+    tracked.add(LocationNetworkRepository.delete_location_network, loc_net)
+
+    assert sorted(results) == ["created", "kept", "kept", "kept", "kept"]
+
