@@ -150,3 +150,67 @@ async def test_create_device_still_fails_on_other_errors():
 
     with pytest.raises(IntegrityError):
         await DeviceRepository.create_device(device)
+
+
+# --- ensure_device: the database says whether a device is known ---
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_device_adds_a_missing_device(tracked):
+    device = make_device("test-ensure-device-adds")
+
+    created = await DeviceRepository.ensure_device(device)
+    tracked.add(DeviceRepository.delete_device, device)
+
+    assert created is True
+    found = await DeviceRepository.get_device_by_hash(device.hash)
+    assert found is not None
+    assert found.browser == device.browser
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_device_keeps_a_stored_device_as_it_is(tracked):
+    stored = make_device("test-ensure-device-keeps")
+    await DeviceRepository.create_device(stored)
+    tracked.add(DeviceRepository.delete_device, stored)
+    again = make_device("test-ensure-device-keeps")
+    again.hash = stored.hash
+    again.browser = "Firefox"
+
+    created = await DeviceRepository.ensure_device(again)
+
+    assert created is False
+    found = await DeviceRepository.get_device_by_hash(stored.hash)
+    assert found.browser == "Chrome"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_device_adds_the_device_again_after_the_database_lost_it(tracked):
+    device = make_device("test-ensure-device-lost")
+    await DeviceRepository.ensure_device(device)
+    await DeviceRepository.delete_device(device)
+
+    created = await DeviceRepository.ensure_device(make_device_like(device))
+    tracked.add(DeviceRepository.delete_device, device)
+
+    assert created is True
+    assert await DeviceRepository.get_device_by_hash(device.hash) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ensure_device_twice_at_once_keeps_one_row(tracked):
+    device = make_device("test-ensure-device-race")
+
+    results = await asyncio.gather(
+        *(DeviceRepository.ensure_device(make_device_like(device)) for _ in range(5))
+    )
+    tracked.add(DeviceRepository.delete_device, device)
+
+    assert sorted(results) == [False, False, False, False, True]
+
+
+def make_device_like(device: Device) -> Device:
+    """A new Device object for the same hash, as the next login builds it."""
+    copy = make_device("unused")
+    copy.hash = device.hash
+    return copy

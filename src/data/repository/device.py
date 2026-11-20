@@ -55,6 +55,28 @@ class DeviceRepository:
             return device
 
     @staticmethod
+    async def ensure_device(device: Device) -> bool:
+        """
+        Makes sure a **Device** record with this hash exists in the database,
+        adding it when it is missing. A record that exists is left as it is.
+
+        The database decides, not a cache: a hash that names no record (after
+        the database was restored, swapped or reset) gets its record again, so
+        the rows that refer to it can be stored. A known device costs one read
+        by primary key. Two first logins from the same new device that both
+        find no record are handled by `create_device`.
+
+        **Parameters**
+        - `device`: The **Device** to store when no record has its hash.
+
+        **Returns**
+        - True when the record was added, False when it already existed.
+        """
+        if await DeviceRepository.get_device_by_hash(device.hash) is not None:
+            return False
+        return await DeviceRepository.create_device(device) is device
+
+    @staticmethod
     async def get_device_by_hash(hash_value: str) -> Device | None:
         """
         Retrieves a **Device** record by its unique hash value.
