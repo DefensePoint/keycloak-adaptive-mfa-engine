@@ -12,8 +12,7 @@ Each function here performs that sequence and returns what `run_row` needs to kn
 including the facts it established, so the artifact records what the choreography
 actually achieved rather than what it intended.
 
-Two of the three work. `login_failure` turned out not to be reachable from any
-failure a real user can produce, so its row is a strict xfail carrying the measurement;
+`login_failure` is reached through failed step-ups, not wrong passwords;
 `deliberate_failures` below documents why in full.
 
 **Real actions, not seeded rows.** The profile clone rewrites history in SQL because
@@ -61,6 +60,10 @@ def _engine_setting(name: str) -> int:
 
 # --- login_failure ---------------------------------------------------------
 
+# Longer than the test realm's quickLoginCheckMilliSeconds (1000): failures closer
+# together than that lock the user out. See deliberate_failures.
+QUICK_LOGIN_SPACING_S = 1.5
+
 
 def deliberate_failures(step_up_ip: str = "193.99.144.80"):
     """Fail enough step-ups to trip the failure-rate pattern.
@@ -82,8 +85,17 @@ def deliberate_failures(step_up_ip: str = "193.99.144.80"):
 
     What is reachable is a failure *after* risk evaluation: a login from an unfamiliar
     address is asked for an emailed code, and a wrong code finalises the open process
-    as LOGIN_ERROR. That is what this drives, so the signal is covered end to end even
-    though the failures it can see are not the ones its own docstring describes.
+    as LOGIN_ERROR. That needs the Keycloak plugin 1.1.0 or later, which emits a
+    LOGIN_ERROR for a wrong code; 1.0.1 emitted no event for it at all. That is what
+    this drives, so the signal is covered end to end even though the failures it can
+    see are not the ones its own docstring describes.
+
+    The attempts are spaced. The plugin's wrong-code error also counts in Keycloak's
+    brute-force protection, and the test realm treats two failures less than
+    `quickLoginCheckMilliSeconds` (1 s) apart as a quick-login attack: it locks the
+    user for `minimumQuickLoginWaitSeconds`, so the next attempt's correct password
+    is refused and never reaches the step-up. A person entering codes is slower than
+    that, so pacing keeps this to what a real user can produce.
 
     The rate pattern is targeted rather than the other three the check offers.
     Distributed brute force would need three source addresses and would also move the
@@ -95,6 +107,8 @@ def deliberate_failures(step_up_ip: str = "193.99.144.80"):
         needed = _engine_setting("LOGIN_FAILURE_RATE_THRESHOLD")
 
         for attempt in range(needed):
+            if attempt:
+                time.sleep(QUICK_LOGIN_SPACING_S)
             outcome = login(
                 {**BASELINE_CONTEXT, "xff": step_up_ip}, username, bad_code=True
             )
@@ -119,7 +133,9 @@ def deliberate_failures(step_up_ip: str = "193.99.144.80"):
             raise ChoreographyError(
                 f"only {recorded} of {needed} failed step-ups became LOGIN_ERROR rows "
                 f"in auth_process, so the login_failure signal cannot fire. Check that "
-                f"the engine is finalising processes on LOGIN_ERROR events."
+                f"the Keycloak plugin is 1.1.0 or later (1.0.1 emits no event for a "
+                f"wrong code) and that the engine is finalising processes on "
+                f"LOGIN_ERROR events."
             )
 
         return {"facts": {

@@ -26,12 +26,11 @@ implemented. The open ones are listed in the last section.
 
 ### Signal coverage, measured from the committed baseline
 
-17 of 19 signals fire in at least one row. The exceptions:
+18 of 19 signals fire in at least one row. The exceptions:
 
 | Signal | State | Why |
 | --- | --- | --- |
 | `client` | never fires | No row signs in to a second client |
-| `login_failure` | never fires | Not reachable at all, `F01` is a strict xfail |
 | `geo_loc` | disabled | Switched off in the matrix parameter set |
 
 Three more fire only as a **side effect** of another row rather than being driven
@@ -94,9 +93,10 @@ should "combine with unfamiliar-device / new-network signals rather than hard-bl
 on its own", but it is worth confirming that a credential change followed immediately
 by a sign-in deserves no step-up in the default mode.
 
-**One row cannot run here.** `C01` establishes its setup by completing logins from other
-addresses. Weight mode scores those at Risk 3 and asks for an emailed code the harness
-can answer; bayesian scores them at Risk 2 and asks for TOTP, which these users have not
+**Two rows cannot run here.** `C01` establishes its setup by completing logins from
+other addresses, and `F01` by failing the step-up of logins from another address. Weight
+mode scores those at Risk 3 and asks for an emailed code the harness can answer or get
+wrong; bayesian scores them at Risk 2 and asks for TOTP, which these users have not
 enrolled. Skipped with that reason, and reachable once T02 adds TOTP enrolment.
 
 ### K — Credibility and familiarity bands
@@ -298,7 +298,7 @@ In `test_history_rules.py`, except X02 which needs a parameter change and lives 
 | X02 | Enabling `geo_loc` makes a moved location contribute | **xfail:** the parameter is dead | **Found** |
 | X03 | Impossible travel is driven deliberately | Two cities minutes apart, on purpose | **Done** |
 | X04 | An unusual gap between logins fires the time-interval signal | Needs two prior logins, measured | **Done** |
-| X05 | Failed password attempts raise the failure signal | **Blocked** on the `login_failure` wiring decision | Blocked |
+| X05 | Failed password attempts raise the failure signal | **Blocked:** the signal counts failed step-ups (`F01`), not wrong passwords | Blocked |
 | X06 | Dormancy is asserted near its threshold | 44 and 36 days against a 40-day line | **Done** |
 
 **X02 found a dead parameter.** `geo_loc` ships in `DEFAULT_DECISION_PARAMS` with weight
@@ -375,7 +375,7 @@ None is a test problem; each needs a decision first.
 
 | Case | Decision needed |
 | --- | --- |
-| X05 | Should `login_failure` score `auth_event` rather than `auth_process`, or should a failed step-up emit an event? |
+| X05 | Should `login_failure` also count wrong passwords, the LOGIN_ERROR events stored without an auth process? A failed step-up already counts from plugin 1.1.0 |
 | Q03 | Why does the gate return Risk 3 when `DEFAULT_RISK_LEVEL` is 2? |
 | Y-E01 | Should a login immediately after a credential change be challenged in bayesian mode? It is Risk 1 today, and Risk 2 under weight scoring |
 | X02 | Implement `geo_loc` or remove it? It is configurable, weighted, and never evaluated |

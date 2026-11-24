@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- The e2e signal matrix covers the `login_failure` signal. Row `F01`, an expected failure until now, fails five emailed codes in a row, which the Keycloak plugin reports as login errors from 1.1.0, and the signal fires. The attempts are a second and a half apart, because the test realm locks out a user whose failures come less than a second apart. Wrong passwords still do not count toward the signal: they come before the engine opens an auth process. Under bayesian scoring the row is skipped, like `C01`, because those logins are challenged with TOTP, which the test users have not enrolled.
+
 ### Fixed
 
 - A returning user's device counts as familiar from the first login scored on history. Before, on a screen that is not exactly a common size, such as most laptops', the logins inside the history gate stored the device under the raw screen size and later logins looked it up under the size rounded to its common bucket, so those logins never matched. With the default gate of four logins, device familiarity first counted at the ninth login. The screen size is now rounded before the gate. Device rows stored before the upgrade keep their raw hash and are not counted, and device familiarity needs four matching logins, so an existing user who has not yet had it gets it within their next four logins. `/auth_context` and the login webhook still record the raw size, as the device was reported.

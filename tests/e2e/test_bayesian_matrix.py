@@ -66,13 +66,14 @@ RULE_DRIVEN = {
 # behaviour Y06 is about, so it is asserted rather than worked around.
 GATE_ROWS = {"G01", "G02", "G03"}
 
-# C01 establishes its sessions by completing logins from other addresses. In weight mode
-# a new address scores Risk 3, which asks for an emailed code the harness can answer. In
-# bayesian mode it scores Risk 2, which asks for TOTP, and these users have no enrolled
-# authenticator, so the setup cannot complete and the row cannot mean anything. Not a
-# product defect: the same login is simply challenged differently. Reachable once T02
-# adds TOTP enrolment to the harness.
-NEEDS_TOTP_ENROLMENT = {"C01"}
+# C01 establishes its sessions by completing logins from other addresses, and F01 fails
+# the step-up of logins from another address. In weight mode a new address scores Risk 3,
+# which asks for an emailed code the harness can answer or get wrong. In bayesian mode it
+# scores Risk 2, which asks for TOTP, and these users have no enrolled authenticator, so
+# the setup cannot complete and the row cannot mean anything. Not a product defect: the
+# same login is simply challenged differently. Reachable once T02 adds TOTP enrolment to
+# the harness.
+NEEDS_TOTP_ENROLMENT = {"C01", "F01"}
 
 # Rows built to look like an account takeover. Their exact level is scorer-specific, but
 # any scorer that lets one through unchallenged has failed at the thing it is for.
@@ -187,9 +188,9 @@ def test_bayesian_matrix_row(bayesian_matrix, row):
     """Y01, Y02, Y05, Y06. Every row, scored by the deployment default."""
     if row["id"] in NEEDS_TOTP_ENROLMENT:
         pytest.skip(
-            "this row establishes its setup by completing logins from other "
-            "addresses, which bayesian scores at Risk 2 and answers with a TOTP "
-            "challenge these users cannot complete. Needs T02 (TOTP enrolment)."
+            "this row establishes its setup through logins from other addresses, "
+            "which bayesian scores at Risk 2 and answers with a TOTP challenge these "
+            "users have no authenticator for. Needs T02 (TOTP enrolment)."
         )
 
     before = None

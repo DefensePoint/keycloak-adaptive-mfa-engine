@@ -95,7 +95,7 @@ properties of a sequence and cannot be expressed that way:
 | --- | --- | --- |
 | `concurrent_session` | logins from 2 other addresses, then the row's own | covered by `C01` |
 | `recent_account_change` | the user changes their own password, then signs in | covered by `E01` |
-| `login_failure` | failed logins first | not reachable, `F01` is a strict xfail |
+| `login_failure` | failed step-ups first (wrong emailed codes) | covered by `F01` |
 
 These use real actions rather than the SQL clone. The clone exists because training 20
 users through the browser would take half an hour, but the whole point of these three
@@ -332,23 +332,18 @@ This was originally a manual three-command tool, `chrome_spotcheck.py`, on the g
   cluster. Rows are therefore honest delta sets, with the reported signal list showing
   what actually fired. A second tier that temporarily disables that signal would give
   per-signal weights; deferred pending a decision.
-- **`login_failure` cannot fire from real behaviour, so its row is a strict xfail.**
-  The signal scores `auth_process` rows with `final_status='LOGIN_ERROR'`, and neither
-  failure a user can produce creates one. A wrong password does emit Keycloak's
+- **`login_failure` does not see wrong passwords.** The signal scores `auth_process`
+  rows with `final_status='LOGIN_ERROR'`. A wrong password does emit Keycloak's
   LOGIN_ERROR event, but the adaptive authenticator runs after the password form, so no
-  auth process is open and `AuthEventService.__finalize_process` discards it: measured,
-  45 such events, every one with a null `auth_process`, and no `auth_process` row at
-  all. A wrong emailed code does happen inside an open process, but Keycloak emits no
-  event for it: measured, zero `auth_event` rows for a user who failed five. So the
+  auth process is open and the engine stores the event without one: measured, 45 such
+  events, every one with a null `auth_process`, and no `auth_process` row at all. So the
   four patterns the check implements, failure rate, distributed brute force, activity
   burst and bot-like regularity, cannot see password guessing, which is what they
-  describe. The pre-existing `LOGIN_ERROR` rows in the dev database appear to come from
-  a stale cached process being finalised by a later, unrelated failure, which would
-  attribute the failure to the wrong login. `F01` is kept and marked
-  `xfail(strict=True)` so that fixing the wiring forces the mark off rather than
-  leaving a row that silently proves nothing. Fixing it is a product decision, either
-  scoring `auth_event` instead or emitting an event on a failed step-up, so it is
-  flagged rather than changed here.
+  describe. A wrong emailed code does count: it happens inside an open process, and
+  from plugin 1.1.0 it is a LOGIN_ERROR that closes the process as one (1.0.1 emitted
+  no event for it). That is how `F01` reaches the signal, with its attempts spaced
+  beyond the realm's 1 s quick-login check, which otherwise locks the user out after
+  two. Until 1.1.0 `F01` was a strict xfail.
 - **The hazard floor is not reachable through the front door.** It was written for the
   case where many signals move while the device stays familiar, so familiarity would
   otherwise subtract from the escalation. Reaching it needs 6 or more changed signals
