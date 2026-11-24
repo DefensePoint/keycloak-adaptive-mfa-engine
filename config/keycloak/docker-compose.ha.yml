@@ -186,6 +186,10 @@ services:
   # ── Provider JARs (one-shot) ─────────────────────────────────────────────────
   providers:
     image: curlimages/curl:8.11.1
+    # As root: the image's own user cannot write to a checkout owned by another
+    # user, as on a Linux host or a CI runner (curl exits 23). The JARs are then
+    # handed to the directory's owner, so they are not left owned by root.
+    user: "0:0"
     working_dir: /work
     environment:
       SPI_BASE_URL: ${SPI_BASE_URL:-https://github.com/DefensePoint/keycloak-adaptive-mfa/releases/download}
@@ -222,6 +226,7 @@ services:
         fetch vavr-1.0.1.jar \
           f9ea1043ad66dbd8e0c4dd7b7a9cdce5bf2d86fab1ce33aace1ad4d56bd1270b \
           "$$MAVEN_BASE_URL/io/vavr/vavr/1.0.1/vavr-1.0.1.jar"
+        chown "$$(stat -c %u:%g .)" keycloak-adaptive-mfa.jar keycloak-admin-ui-amfa.jar vavr-1.0.1.jar
     networks:
       - amfa_net
 
