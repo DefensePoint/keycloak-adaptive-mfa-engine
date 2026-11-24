@@ -190,10 +190,10 @@ adjustment. Do not assume a rule documented for weight mode applies to the defau
 
 Stated here because a green run should not be read as more than it is:
 
-- **`login_failure` cannot fire from real behaviour.** `F01` is `xfail(strict=True)`
-  carrying the measurement. A wrong password emits Keycloak's LOGIN_ERROR but no auth
-  process is open yet, so the engine discards it; a wrong emailed code happens inside an
-  open process but Keycloak emits no event for it. Either fix is a product decision.
+- **`login_failure` does not see wrong passwords.** `F01` reaches it with wrong emailed
+  codes, which the plugin reports from 1.1.0. A wrong password emits Keycloak's
+  LOGIN_ERROR before the adaptive authenticator has opened an auth process, so the
+  engine stores it without one, and the signal counts only failed processes.
 - **Risk 4 is not a rejection in this realm.** The deny-list rows do force Risk 4, but
   the flow has only `risk-2-EQUAL` and `risk-3-GREATER_OR_EQUAL`, so Risk 4 lands in the
   `>= 3` branch and gets the same email code as Risk 3.

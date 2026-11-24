@@ -245,22 +245,8 @@ ROWS = [
         "id": "F01", "delta": {}, "choreograph": ("login_failure", ()),
         "expect_signals": ["login_failure"],
         "note": "failed step-ups, enough to trip the failure-rate pattern",
-        # Kept as an executable record of a gap rather than deleted, and strict, so
-        # that whoever fixes the wiring is told to remove this mark instead of
-        # discovering the row had been quietly skipped for months.
-        "unreachable":
-            "login_failure reads auth_process rows with final_status=LOGIN_ERROR, and "
-            "neither failure a user can produce creates one. A wrong password does "
-            "emit Keycloak's LOGIN_ERROR event, but the adaptive authenticator runs "
-            "after the password form, so no auth process is open and "
-            "AuthEventService.__finalize_process discards it: measured, 45 such events "
-            "all with a null auth_process, and zero auth_process rows. A wrong emailed "
-            "code happens inside an open process, but Keycloak emits no event for it "
-            "at all: measured, zero auth_event rows for a user who failed five. So the "
-            "signal cannot fire from real behaviour, and the four patterns it "
-            "implements (failure rate, distributed brute force, burst, bot regularity) "
-            "cannot see password guessing, which is what they describe. See the known "
-            "limits in signal-matrix-plan.md.",
+        # Wrong emailed codes, which the plugin reports from 1.1.0. Wrong passwords
+        # still do not count: see the known limits in signal-matrix-plan.md.
     },
     {
         "id": "C01", "delta": {},
