@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The engine workers share one copy of the bundled IP databases instead of holding one each. Every worker read the databases into its own memory, about 140 MB per worker with the city database, so 4 workers held 4 copies. A database that is part of the image is now mapped from the file, and every worker reads the same pages: with `WORKERS=4` the engine starts at about 0.63 GB instead of 1.2 GB. A database on a mounted volume, or one the engine's user can write, is still read into memory, because a copy over a mapped file while the engine runs could hand lookups half-written data or stop the worker; hot reload works as before. Most of the remaining memory is per-worker Python libraries (pandas and scikit-learn, about 100 MB per worker).
+- CI builds the engine image and runs the e2e suite against it. A new `e2e` job builds the image from the commit, starts the quick start stack with the e2e overlay (Keycloak with the plugin and admin UI, PostgreSQL, Redis, Mailpit), and runs `run_e2e.py` and `tests/e2e`, except the SSO suite and the browser journeys. The release workflow runs CI, so a tag whose image does not start or fails the suite is not published. The weight-mode signal matrix's baseline comparison runs without blocking, because its baseline predates scoring changes since the first release; its output is uploaded with the stack logs.
 
 ### Fixed
 
