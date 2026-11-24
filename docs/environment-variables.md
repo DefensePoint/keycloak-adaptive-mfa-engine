@@ -143,6 +143,16 @@ configurable, because a deny list that only asked for a second factor would weak
 the one control meant to be absolute. An allow-list match instead caps the level at
 2 when the score would otherwise be higher.
 
+An IP or country list entry must equal the login's value. An operating system entry
+is compared with the OS family the browser reports (`Windows`, `Mac OS X`, `Linux`,
+`Ubuntu`, `Android`, `iOS`, `Chrome OS` and so on) regardless of case and spacing,
+and the common names `macOS`, `OS X`, `Windows 10`, `Windows 11`, `iPadOS` and
+`ChromeOS` are accepted for those families. A `Linux` entry also covers the Linux
+distributions a browser can name instead, such as Firefox on Ubuntu or Fedora;
+Android and Chrome OS need their own entries. The version is not part of the
+match: `Windows` covers every Windows version, and an entry such as `Windows|10`
+matches nothing.
+
 ## Scoring
 
 Two interchangeable scoring modes turn the changed risk signals into a risk

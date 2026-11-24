@@ -16,6 +16,7 @@ from src.data.repository import AuthProcessRepository
 from src.data.schema import DecisionRequest, DecisionResponse
 from src.utils.synchronization import synchronize_with_distributed_mutex
 from src.utils.auth.dependency import tenant_scoped_id
+from src.utils.data_processing.os_family import os_list_matches
 
 
 from src.core.config.environment import (
@@ -822,6 +823,20 @@ class DecisionService:
         )
         return filtered_vars
 
+    @staticmethod
+    def _list_matches(param: str, entries, value) -> bool:
+        """Whether an allow or deny list matches the login's value.
+
+        The OS list holds what an admin typed and the login carries the user-agent
+        parser's family name, so it matches as `os_list_matches` describes. The IP
+        and country lists compare exactly.
+        """
+        if entries is None:
+            return False
+        if param == "operating_system":
+            return os_list_matches(entries, value)
+        return value in entries
+
     def __detect_param_whitelist(self, current_event: dict) -> List[dict]:
         """ """
         logging.info("Starting process to detect whitelist")
@@ -834,7 +849,7 @@ class DecisionService:
             whitelist = self.decision_params.get(param, {}).get("whitelist", None)
             curr_val = current_event.get(param)
 
-            if whitelist is not None and curr_val in whitelist:
+            if self._list_matches(param, whitelist, curr_val):
                 whitelisted.append({param: curr_val})
 
         logging.debug("Whitelisted params=%s", whitelisted)
@@ -851,7 +866,7 @@ class DecisionService:
 
             blacklist = self.decision_params.get(param, {}).get("blacklist", None)
             curr_val = current_event.get(param)
-            if blacklist is not None and curr_val in blacklist:
+            if self._list_matches(param, blacklist, curr_val):
                 blacklisted.append({param: curr_val})
 
         logging.debug("Blacklisted params=%s", blacklisted)
