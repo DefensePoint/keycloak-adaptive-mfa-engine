@@ -59,3 +59,48 @@ def test_module_refuses_to_import_with_an_unsafe_env_combination(monkeypatch):
         # sees the normal, safe, importable state.
         monkeypatch.undo()
         importlib.reload(environment_mod)
+
+
+# --- /decision rate limit -------------------------------------------------------
+
+
+def _reload_with(monkeypatch, **env):
+    for key in ("RATE_LIMIT", "RATE_LIMIT_MAX_REQ"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    try:
+        importlib.reload(environment_mod)
+        return environment_mod.RATE_LIMIT, environment_mod.RATE_LIMIT_MAX_REQ
+    finally:
+        monkeypatch.undo()
+        importlib.reload(environment_mod)
+
+
+def test_decision_rate_limit_default_leaves_room_for_ordinary_logins(monkeypatch):
+    """At 4 per minute the fifth quick login by one user got a 429, which the
+    Keycloak plugin treats like an outage: the login continued at the realm's
+    fallback risk level, without a step-up when that level is 1."""
+    assert _reload_with(monkeypatch) == (True, 30)
+
+
+@pytest.mark.parametrize("value", ["false", "False", "FALSE", "0", "no", "off", " false "])
+def test_rate_limit_can_be_switched_off(monkeypatch, value):
+    # bool("False") is True: the switch could not be turned off.
+    assert _reload_with(monkeypatch, RATE_LIMIT=value)[0] is False
+
+
+@pytest.mark.parametrize("value", ["true", "True", "1", "yes", "on", ""])
+def test_rate_limit_stays_on(monkeypatch, value):
+    assert _reload_with(monkeypatch, RATE_LIMIT=value)[0] is True
+
+
+def test_a_rate_limit_typo_stops_the_engine(monkeypatch):
+    """A typo must not quietly turn the protection off."""
+    monkeypatch.setenv("RATE_LIMIT", "flase")
+    try:
+        with pytest.raises(ValueError, match="RATE_LIMIT"):
+            importlib.reload(environment_mod)
+    finally:
+        monkeypatch.undo()
+        importlib.reload(environment_mod)
