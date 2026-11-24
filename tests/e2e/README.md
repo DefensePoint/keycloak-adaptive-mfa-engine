@@ -71,6 +71,22 @@ does not fail during collection with a SQLAlchemy error about parsing `'None'` a
 port. Existing environment variables always win, so it changes nothing inside the
 container.
 
+### In CI
+
+The `e2e` job in `.github/workflows/ci.yml` builds the engine image from the commit,
+starts the stack above with it, and runs `run_e2e.py` and this suite, except the SSO
+suite and the browser journeys. It runs every module from one container on the stack's
+network, built from the engine image plus the docker CLI, so the modules that import
+`src` get the image's dependencies and no hosts-file entry is needed.
+`scripts/ci/e2e-run.sh` starts that container; with the stack up as project `amfa`
+and the runner image built as the job builds it, the same command runs the suite
+locally:
+
+```bash
+scripts/ci/e2e-run.sh python -m pytest tests/e2e --ignore=tests/e2e/sso \
+    --ignore=tests/e2e/test_browser_journeys.py
+```
+
 ## Prerequisites
 
 - The compose stack up: Keycloak `:8443` (reachable at `https://keycloak:8443`
