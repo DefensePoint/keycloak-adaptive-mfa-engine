@@ -130,8 +130,22 @@ attributes:
   the engine to be a real security control, not just a risk signal, should set
   this to `mandatory`.
 
-Set both via **Realm settings → Security defenses → Adaptive MFA**, or the
-admin REST API alongside `adaptiveAuthEndpoint`.
+Set `fallbackRisk` on **Realm settings → Security defenses → Adaptive MFA**
+(**Fallback Risk Level**). The page has no failure mode field, so set
+`adaptiveAuthFailureMode` through the admin REST API, for example with
+Keycloak's admin CLI:
+
+```bash
+kcadm.sh update realms/<realm> -s attributes.adaptiveAuthFailureMode=mandatory
+```
+
+`kcadm.sh update -s` keeps the realm's other attributes, and so does a save on
+the Adaptive MFA page. A REST call of your own must do the same: read the
+realm, change the one attribute and send `attributes` back in full. An update
+whose `attributes` hold only `adaptiveAuthFailureMode` removes every other
+realm attribute, `adaptiveAuthEndpoint`, `adaptiveToggle` and `fallbackRisk`
+included, and a realm left in `mandatory` mode without an endpoint denies every
+login.
 
 Whichever mode is active, the resulting Keycloak login event carries a
 `decision_source` detail (`engine` or `fallback`) so a degraded deployment —
