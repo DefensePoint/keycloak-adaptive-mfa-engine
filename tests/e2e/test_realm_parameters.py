@@ -77,12 +77,6 @@ def isolated_realm():
     yield from trained_realm({"disabled": {"event_cluster_label"}})
 
 
-@pytest.fixture(scope="module")
-def geo_realm():
-    """`geo_loc` on, the one signal the matrix parameter set switches off."""
-    yield from trained_realm({"enabled": {"geo_loc"}})
-
-
 # --- P02: a disabled signal contributes nothing ---------------------------
 
 
@@ -181,43 +175,6 @@ def test_a_weight_sum_lands_in_the_documented_band(
     )
 
 
-# --- X02: the signal the matrix switches off ------------------------------
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "geo_loc is a dead parameter: it can be configured and weighted, and nothing "
-        "ever evaluates it. It ships in DEFAULT_DECISION_PARAMS with weight 3 and "
-        "disabled True, so it is offered as a tunable signal, but eval_risk.py "
-        "computes each signal behind an explicit `if \"<name>\" in enabled_params` "
-        "block and there is no such block for geo_loc. Grepping the engine finds the "
-        "name in exactly one place, its own default entry. Enabling it therefore does "
-        "nothing at all, silently: an operator who switches it on and gives it a "
-        "weight gets no effect and no warning, and may reasonably believe location is "
-        "being scored when the work is actually done by geolocation_cluster_label and "
-        "country_name. The fix is a decision, either implement the signal or drop the "
-        "parameter, and if it is dropped this test should be deleted rather than "
-        "unmarked."
-    ),
-)
-def test_enabling_geo_loc_makes_a_moved_location_contribute(geo_realm):
-    """X02. `geo_loc` is disabled in the matrix, so nothing covers it anywhere.
-
-    Enabled here and driven with an address in another country, which moves the
-    coordinates the signal would be computed from.
-    """
-    result = run_in(geo_realm, "X02", {"xff": "193.99.144.80"})
-
-    assert result["risk"] is not None, "the login produced no decision"
-    assert "geo_loc" in result["why"] or "coordinates" in result["why"].lower(), (
-        f"with geo_loc enabled, a login from another country reported no signal from "
-        f"it. Note geolocation_cluster_label is a different parameter and does fire "
-        f"here, which is what makes the dead one easy to miss.\n"
-        f"  why: {result['why']}"
-    )
-
-
 # --- P03: a realm nobody configured ---------------------------------------
 
 
@@ -225,7 +182,7 @@ def test_a_realm_with_no_parameters_of_its_own_scores_nothing(request):
     """P03. The shipped defaults disable every signal, which is easy to not know.
 
     A realm that has never had parameters written falls back to `default`/`default`,
-    and `DEFAULT_DECISION_PARAMS` ships with all nineteen signals disabled. So an
+    and `DEFAULT_DECISION_PARAMS` ships with all eighteen signals disabled. So an
     unconfigured realm does not score cautiously, it does not score at all. Worth a
     test because the failure mode is silent: every login looks fine.
     """

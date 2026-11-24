@@ -6,7 +6,11 @@ from types import SimpleNamespace
 from src.data.repository import DecisionParamsConfigRepository
 from pydantic import TypeAdapter, ValidationError
 
-from src.core.config.environment import DEFAULT_DECISION_PARAMS, DEFAULT_INACTIVE_DAYS
+from src.core.config.environment import (
+    DEFAULT_DECISION_PARAMS,
+    DEFAULT_INACTIVE_DAYS,
+    RETIRED_DECISION_PARAMS,
+)
 
 import logging
 
@@ -51,6 +55,18 @@ class DecisionParamsFactory:
                 seeded["group_id"] = group_id
                 result.append(seeded)
         return result
+
+    @staticmethod
+    def _drop_retired(params: List[dict]) -> List[dict]:
+        """Leave out rows for signals in RETIRED_DECISION_PARAMS.
+
+        Configs saved before a signal was retired still hold its row. Dropping
+        it on read keeps it out of the settings response, so the next save does
+        not send it back, and out of the evaluator.
+        """
+        return [
+            p for p in params if p.get("parameter_name") not in RETIRED_DECISION_PARAMS
+        ]
 
     @staticmethod
     def _fill_effective_inactive_days(params: List[dict]) -> List[dict]:
@@ -103,7 +119,7 @@ class DecisionParamsFactory:
             for config in configs:
                 if config.parameters is None:
                     continue
-                params = config.parameters
+                params = DecisionParamsFactory._drop_retired(config.parameters)
                 # The default group must expose the full signal set. Rather than
                 # rejecting a config whose parameter count no longer matches the
                 # defaults (which broke every time a signal was added), back-fill
@@ -182,7 +198,8 @@ class DecisionParamsFactory:
         # Merge raw params (which retain disabled flags) by parameter_name:
         # the override entry, when present, replaces the base entry.
         merged_by_name: Dict[str, Any] = {
-            p["parameter_name"]: p for p in base_config.parameters
+            p["parameter_name"]: p
+            for p in DecisionParamsFactory._drop_retired(base_config.parameters)
         }
         # Forward-compatibility: back-fill any default signals the saved base
         # config is missing (e.g. a signal added after this realm was last
@@ -203,7 +220,7 @@ class DecisionParamsFactory:
             base_inactive_days = merged_by_name["inactive_account"].get("inactive_days")
 
         if override_config and isinstance(override_config.parameters, list):
-            for p in override_config.parameters:
+            for p in DecisionParamsFactory._drop_retired(override_config.parameters):
                 merged_by_name[p["parameter_name"]] = p
 
         # Restore the realm-level inactive_days threshold: group overrides must not

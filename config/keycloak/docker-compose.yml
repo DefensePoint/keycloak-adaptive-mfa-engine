@@ -183,9 +183,9 @@ services:
       #
       # Deploying behind a reverse proxy, load balancer or ingress? You MUST set
       #     KC_PROXY_HEADERS: xforwarded      # or `forwarded` for RFC 7239
-      # or AMFA receives the proxy's address as every user's IP. Six of the
-      # nineteen risk signals then silently stop working, because every user looks
-      # like the same client: geo_loc, country_name, impossible_travel,
+      # or AMFA receives the proxy's address as every user's IP. Five of the
+      # eighteen risk signals then silently stop working, because every user looks
+      # like the same client: country_name, impossible_travel,
       # geolocation_cluster_label, anonymous_detection, and the distributed-source
       # half of login_failure.
       #

@@ -10,7 +10,10 @@ from collections import defaultdict
 
 from fastapi import HTTPException, status
 
-from src.core.config.environment import DEFAULT_DECISION_PARAMS
+from src.core.config.environment import (
+    DEFAULT_DECISION_PARAMS,
+    RETIRED_DECISION_PARAMS,
+)
 from typing import Any, Dict
 
 import json
@@ -43,6 +46,8 @@ class ParamsConfigService:
 
         grouped_parameters = defaultdict(list)
         for param in request:
+            if param.parameter_name in RETIRED_DECISION_PARAMS:
+                continue
             # Normalize empty/missing group to "default" so an unset group
             # (e.g. an override row with no group selected) folds into the
             # default config instead of creating a phantom active config that

@@ -104,3 +104,13 @@ def test_a_rate_limit_typo_stops_the_engine(monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(environment_mod)
+
+
+def test_geo_loc_is_not_a_shipped_signal():
+    """geo_loc was configurable but never evaluated, so it is retired. It must
+    not come back as a default, or new realms would again carry a weight that
+    can never count."""
+    names = {p["parameter_name"] for p in environment_mod.DEFAULT_DECISION_PARAMS}
+
+    assert "geo_loc" not in names
+    assert "geo_loc" in environment_mod.RETIRED_DECISION_PARAMS

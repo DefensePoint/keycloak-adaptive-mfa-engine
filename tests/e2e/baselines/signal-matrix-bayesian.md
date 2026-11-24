@@ -5,7 +5,7 @@ Do not edit by hand.
 
 This is the engine's *default* scoring mode. Levels here are not comparable with the weight-mode baseline; the two scorers reach a level by different routes.
 
-Config fingerprint: `sha256:03922a0e514880dda4d8deb48bd7a99d`
+Config fingerprint: `sha256:d618f2a22258f8301b0cd1d838f2820f`
 
 | Row | Delta | Risk | p(fraud) | Raising | Lowering |
 | --- | --- | --- | --- | --- | --- |

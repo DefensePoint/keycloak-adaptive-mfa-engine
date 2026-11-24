@@ -7,8 +7,8 @@
 # No -p flag: the base file declares `name: amfa`, so the containers are amfa-* and
 # the suite finds them by that name without being told where it was started from.
 #
-# Six of the nineteen risk signals are derived from the client IP (ip_address,
-# country_name, geo_loc, anonymous_detection, impossible_travel and
+# Five of the eighteen risk signals are derived from the client IP (ip_address,
+# country_name, anonymous_detection, impossible_travel and
 # geolocation_cluster_label). Driving them from a test means choosing the IP that
 # Keycloak reports, which means Keycloak has to trust X-Forwarded-For.
 #

@@ -1,6 +1,6 @@
 """Setting up the three signals that a single login cannot express.
 
-Sixteen of the nineteen signals are properties of one login, so a row states them as a
+Fifteen of the eighteen signals are properties of one login, so a row states them as a
 delta and sends it. Three are properties of a *sequence*, and cannot be driven that
 way at all:
 
