@@ -32,6 +32,22 @@ def _env_flag(key: str, default: bool) -> bool:
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _strict_env_bool(key: str, default: bool) -> bool:
+    """Like _env_bool, but an unrecognised value raises instead of reading as False.
+
+    For switches where a typo must not quietly turn a protection off.
+    """
+    raw = os.getenv(key)
+    if raw is None or not raw.strip():
+        return default
+    value = raw.strip().lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"{key}={raw!r} is not a boolean; use true or false.")
+
+
 MSSQL_ENCRYPT = _env_flag("MSSQL_ENCRYPT", True)
 MSSQL_TRUST_SERVER_CERTIFICATE = _env_flag(
     "MSSQL_TRUST_SERVER_CERTIFICATE", False
@@ -267,8 +283,13 @@ N_ROWS_TO_KEEP = int(os.getenv(key="N_ROWS_TO_KEEP", default=10))
 
 AMFA_TIMEOUT = float(os.getenv(key="AMFA_TIMEOUT", default=0.8))
 
-RATE_LIMIT = bool(os.getenv(key="RATE_LIMIT", default=True))
-RATE_LIMIT_MAX_REQ = int(os.getenv(key="RATE_LIMIT_MAX_REQ", default=4))
+RATE_LIMIT = _strict_env_bool("RATE_LIMIT", True)
+# /decision requests per user and realm per RATE_LIMIT_TIME_WINDOW. A refused
+# request reaches the Keycloak plugin as an engine failure, and the login then
+# continues at the realm's fallback risk level, without a step-up when that
+# level is 1. So the limit sits well above what one person's logins need: at 4,
+# a fifth quick login was already refused.
+RATE_LIMIT_MAX_REQ = int(os.getenv(key="RATE_LIMIT_MAX_REQ", default=30))
 RATE_LIMIT_TIME_WINDOW = int(os.getenv(key="RATE_LIMIT_TIME_WINDOW", default=60))
 # Settings and scoring writes per RATE_LIMIT_TIME_WINDOW, counted per realm and
 # per calling client. Separate from RATE_LIMIT_MAX_REQ, which is a per-user
@@ -428,22 +449,6 @@ ACCOUNT_ACTION_EVENT_TYPES = [
 DEVICE_SIGNAL_INCLUDE_BROWSER_VERSION = _env_bool(
     "DEVICE_SIGNAL_INCLUDE_BROWSER_VERSION", False
 )
-
-def _strict_env_bool(key: str, default: bool) -> bool:
-    """Like _env_bool, but an unrecognised value raises instead of reading as False.
-
-    For switches where a typo must not quietly turn a protection off.
-    """
-    raw = os.getenv(key)
-    if raw is None or not raw.strip():
-        return default
-    value = raw.strip().lower()
-    if value in ("1", "true", "yes", "on"):
-        return True
-    if value in ("0", "false", "no", "off"):
-        return False
-    raise ValueError(f"{key}={raw!r} is not a boolean; use true or false.")
-
 
 # Redis connection. An empty value counts as unset, so REDIS_PASSWORD= in an
 # .env file means "no password", never an empty or literal "None" password.
