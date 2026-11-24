@@ -59,6 +59,11 @@ _MS_PER_DAY = 86_400_000  # 24 * 60 * 60 * 1000
 OPTIONAL_SIGNALS = ("screen_resolution",)
 
 
+# Signals about the account rather than this login's context. A familiar
+# device and network do not vouch for them, so familiarity never lowers them.
+ACCOUNT_SIGNALS = frozenset({"concurrent_session", "impossible_travel", "recent_account_change"})
+
+
 class DecisionService:
     """Service that evaluates the authentication context to produce a risk-level decision.
 
@@ -247,6 +252,24 @@ class DecisionService:
             self.request_payload
         )
 
+        # The device fingerprint uses the screen size rounded to its common bucket.
+        # Round it here, before the history gate, so every login stores and looks
+        # up the same device hash. Rounded only after the gate, the first logins
+        # stored the raw size's hash and later ones looked up the rounded one, so
+        # a screen that is not exactly a common size, such as most laptops',
+        # never matched its own history and device familiarity never rose. The
+        # context above keeps the raw size, which the screen signal compares.
+        current_screen_resolution = initial_event_dict.get("screen_resolution")
+        closest_screen_resolution = self._bucket_screen_resolution(
+            current_screen_resolution, user_id
+        )
+        logging.info(
+            "Input Screen Resolution: %s - Closest Screen Resolution: %s",
+            current_screen_resolution,
+            closest_screen_resolution,
+        )
+        self.request_payload.screen_resolution = closest_screen_resolution
+
         blacklisted_vars = self.__detect_param_blacklist(initial_event_dict)
         whitelisted_vars = self.__detect_param_whitelist(initial_event_dict)
 
@@ -323,17 +346,6 @@ class DecisionService:
         logging.debug(
             "Computed risk_eval_vars for user_id=%s => %s", user_id, _risk_eval_vars
         )
-
-        current_screen_resolution = initial_event_dict.get("screen_resolution")
-        closest_screen_resolution = self._bucket_screen_resolution(
-            current_screen_resolution, user_id
-        )
-        logging.info(
-            "Input Screen Resolution: %s - Closest Screen Resolution: %s",
-            current_screen_resolution,
-            closest_screen_resolution,
-        )
-        self.request_payload.screen_resolution = closest_screen_resolution
 
         (
             device_info_hash,
@@ -554,7 +566,11 @@ class DecisionService:
         _c = (device_credibility * 0.55) + (net_loc_credibility * 0.45)
 
         decision = self._adjust_for_credibility(
-            c=_c, decision=decision, whitelisted_vars=whitelisted_vars
+            c=_c,
+            decision=decision,
+            whitelisted_vars=whitelisted_vars,
+            network_credibility=net_loc_credibility,
+            allow_lowering=self._familiarity_may_lower(changed_vars, blacklisted_vars),
         )
         decision = self.__adjust_for_white_black_list(
             blacklist_vars=blacklisted_vars,
@@ -891,8 +907,34 @@ class DecisionService:
             )
             return current_resolution
 
+    def _familiarity_may_lower(self, changed_vars, blacklisted_vars) -> bool:
+        """Whether familiarity may lower this login's level.
+
+        A clean login was already relaxed one step by the drop-down, so
+        familiarity may lower only a level scored from changed signals. It never
+        lowers one raised by an account signal: those say someone else may be
+        using the account, and this login's own device and network cannot vouch
+        for that.
+        """
+        if not (changed_vars or blacklisted_vars):
+            return False
+        account_signals = sorted(set(changed_vars or []) & ACCOUNT_SIGNALS)
+        if account_signals:
+            verb = "concerns" if len(account_signals) == 1 else "concern"
+            self._why(
+                f"Familiarity does not lower this level, because "
+                f"{friendly_list(account_signals)} {verb} the account, not this login."
+            )
+            return False
+        return True
+
     def _adjust_for_credibility(
-        self, c: float, decision: int, whitelisted_vars=None
+        self,
+        c: float,
+        decision: int,
+        whitelisted_vars=None,
+        network_credibility=None,
+        allow_lowering=True,
     ) -> int:
         """Move the decision according to how familiar the device and network are.
 
@@ -900,49 +942,72 @@ class DecisionService:
         directly. It decides the final level on a large share of logins, and it was
         previously reachable only by driving the whole decision flow.
 
-        Raises to 3 when the context is largely unfamiliar, lowers by one when it is
-        fairly familiar, and to 1 when it is very familiar. A lowering is refused if
-        it would breach ``self.risk_floor``, which hazard activation sets when it
+        Raises to 3 when the context is largely unfamiliar, or when the network on
+        its own is: a familiar device does not vouch for a network the user has not
+        used, so a known device on a new address, in a new country or behind an
+        anonymiser is challenged like an unfamiliar one. Lowers by one only when
+        both are familiar, and by one step even when very familiar, so a single
+        clean login does not undo a recent high verdict. A lowering is refused if it
+        would breach ``self.risk_floor``, which hazard activation sets when it
         escalates for many-signals-changed-at-once.
+
+        ``network_credibility`` is the network half on its own; without it the
+        combined value ``c`` decides alone. ``allow_lowering`` is false for a clean
+        login, which the drop-down has already relaxed by one step.
         """
         before = decision
+        network_unfamiliar = (
+            network_credibility is not None and network_credibility < 0.3
+        )
+        network_familiar = network_credibility is None or network_credibility >= 0.6
 
-        if c < 0.3:
+        if c < 0.3 or network_unfamiliar:
             logging.debug(
-                f"Authentication context credibility of {c}, assigned high risk!"
+                f"Authentication context credibility of {c}, network credibility of "
+                f"{network_credibility}, assigned high risk!"
             )
+            if c < 0.3:
+                reason = (
+                    f"This device/network is largely unfamiliar (familiarity "
+                    f"{c:.2f}, very low)"
+                )
+            else:
+                reason = (
+                    f"This network is new to the user (network familiarity "
+                    f"{network_credibility:.2f}, very low), and a familiar device "
+                    f"does not vouch for it"
+                )
             if not whitelisted_vars:
                 if decision < 3:
                     logging.debug(
                         f"Corrected assigned risk_level from {decision} to 3!"
                     )
                     decision = 3
-                    self._why(
-                        f"This device/network is largely unfamiliar (familiarity "
-                        f"{c:.2f}, very low); raising from Risk {before} to Risk 3."
-                    )
+                    self._why(f"{reason}; raising from Risk {before} to Risk 3.")
             elif decision < 3:
                 self._why(
-                    f"Device/network familiarity is very low ({c:.2f}), but an "
-                    f"allowlisted attribute is present, so risk is not raised."
+                    f"{reason}, but an allowlisted attribute is present, so risk "
+                    f"is not raised."
                 )
 
-        elif c < 0.6:
+        elif c < 0.6 or not network_familiar or not allow_lowering:
             logging.debug(
-                f"Authentication context credibility of {c}, assigned medium risk!"
+                f"Authentication context credibility of {c}, network credibility of "
+                f"{network_credibility}, assigned medium risk!"
             )
-        elif c < 0.85:
+        else:
+            band = "fairly familiar" if c < 0.85 else "very familiar"
+            level = "high" if c < 0.85 else "very high"
             logging.debug(
                 f"Authentication context credibility of {c}, assigned low risk!"
             )
-
             if decision >= 2:
                 floor = getattr(self, "risk_floor", 0)
                 if decision - 1 < floor:
                     self._why(
-                        f"This device/network is fairly familiar (familiarity "
-                        f"{c:.2f}, high), which would normally lower the risk, but "
-                        f"the escalation above is a floor; staying at Risk {decision}."
+                        f"This device/network is {band} (familiarity {c:.2f}, "
+                        f"{level}), which would normally lower the risk, but the "
+                        f"escalation above is a floor; staying at Risk {decision}."
                     )
                 else:
                     logging.debug(
@@ -950,31 +1015,8 @@ class DecisionService:
                     )
                     decision -= 1
                     self._why(
-                        f"This device/network is fairly familiar (familiarity "
-                        f"{c:.2f}, high); lowering from Risk {before} to Risk {decision}."
-                    )
-        else:
-            logging.debug(
-                f"Authentication context credibility of {c}, assigned the lowest risk!"
-            )
-
-            if decision > 1:
-                floor = getattr(self, "risk_floor", 0)
-                if floor > 1:
-                    self._why(
-                        f"This device/network is very familiar (familiarity "
-                        f"{c:.2f}, very high), which would normally lower the risk "
-                        f"to Risk 1, but the escalation above is a floor; staying "
-                        f"at Risk {decision}."
-                    )
-                else:
-                    logging.debug(
-                        f"Corrected assigned risk_level from {decision} to 1!"
-                    )
-                    decision = 1
-                    self._why(
-                        f"This device/network is very familiar (familiarity "
-                        f"{c:.2f}, very high); lowering from Risk {before} to Risk 1."
+                        f"This device/network is {band} (familiarity {c:.2f}, "
+                        f"{level}); lowering from Risk {before} to Risk {decision}."
                     )
 
         return decision

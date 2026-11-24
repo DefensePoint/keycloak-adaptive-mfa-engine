@@ -3,6 +3,7 @@ import math
 import pytest
 
 from src.service.risk_evaluation.scoring.log_odds import (
+    composite_familiarity,
     LogOddsScorer,
     LogOddsResult,
     MAX_RISK_EVIDENCE,
@@ -136,3 +137,32 @@ def test_unconfigured_changed_flag_still_scores():
     scorer = LogOddsScorer(_params("device"), bias=0.0)
     result = scorer.score(["impossible_travel"], 0.5, 0.5)
     assert result.contributions["impossible_travel"] == pytest.approx(MAX_RISK_EVIDENCE)
+
+
+# --- a familiar device does not vouch for an unfamiliar network ------------
+
+
+def test_a_known_device_on_a_new_network_adds_risk_not_trust():
+    scorer = LogOddsScorer(_params("device"), bias=0.0)
+    known_device_new_network = scorer.score([], device_credibility=1.0, net_loc_credibility=0.2)
+    assert known_device_new_network.contributions["__credibility"] > 0
+
+
+def test_a_known_device_on_a_partly_familiar_network_adds_no_trust():
+    scorer = LogOddsScorer(_params("device"), bias=0.0)
+    result = scorer.score([], device_credibility=1.0, net_loc_credibility=0.5)
+    assert result.contributions["__credibility"] >= 0
+
+
+def test_a_known_device_on_a_familiar_network_adds_trust():
+    scorer = LogOddsScorer(_params("device"), bias=0.0)
+    result = scorer.score([], device_credibility=1.0, net_loc_credibility=1.0)
+    assert result.contributions["__credibility"] < 0
+
+
+def test_composite_familiarity_bands():
+    assert composite_familiarity(1.0, 0.2) == 0.2
+    assert composite_familiarity(1.0, 0.5) == 0.5
+    assert composite_familiarity(0.2, 0.5) == 0.2 * 0.55 + 0.5 * 0.45
+    assert composite_familiarity(1.0, 1.0) == 1.0
+

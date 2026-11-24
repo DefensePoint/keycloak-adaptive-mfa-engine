@@ -81,10 +81,11 @@ def test_without_a_floor_high_familiarity_still_lowers_by_one():
     assert adjust(service, 0.7, 3) == 2
 
 
-def test_without_a_floor_very_high_familiarity_still_collapses_to_one():
+def test_without_a_floor_very_high_familiarity_lowers_by_one_step():
+    """One clean login on a very familiar device does not undo a recent Risk 3."""
     service = service_with_floor(0)
 
-    assert adjust(service, 0.95, 3) == 1
+    assert adjust(service, 0.95, 3) == 2
 
 
 def test_a_floor_below_the_result_does_not_interfere():
@@ -121,4 +122,4 @@ def test_missing_attribute_is_treated_as_no_floor():
     service = DecisionService.__new__(DecisionService)
     service.explain = []
 
-    assert adjust(service, 0.95, 3) == 1
+    assert adjust(service, 0.95, 3) == 2
