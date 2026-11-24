@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- The engine workers share one copy of the bundled IP databases instead of holding one each. Every worker read the databases into its own memory, about 140 MB per worker with the city database, so 4 workers held 4 copies. A database that is part of the image is now mapped from the file, and every worker reads the same pages: with `WORKERS=4` the engine starts at about 0.63 GB instead of 1.2 GB. A database on a mounted volume, or one the engine's user can write, is still read into memory, because a copy over a mapped file while the engine runs could hand lookups half-written data or stop the worker; hot reload works as before. Most of the remaining memory is per-worker Python libraries (pandas and scikit-learn, about 100 MB per worker).
+
 ### Fixed
 
 - The engine keeps working when its database is restored, swapped or reset while Redis is kept. The device and network steps asked their Redis cache whether a record existed, so a cached record the database no longer had was never written again: every `/decision`, `/auth_context` and login webhook then failed on the foreign key with HTTP 500 until Redis was flushed, and logins ran only on the plugin's fallback risk. Both steps now ask the database, which costs one read by primary key for a known device or network, and add a missing record. The two caches are removed; their `auth:device:v1:*` and `auth:location_network:v2:*` keys are no longer read and expire within a day.

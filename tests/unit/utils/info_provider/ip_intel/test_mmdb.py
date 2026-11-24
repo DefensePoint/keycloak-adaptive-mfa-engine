@@ -94,12 +94,9 @@ def test_database_is_opened_lazily_and_reused(db_file, opener):
     assert opener["calls"] == 1  # opened once, then reused
 
 
-def test_opened_in_memory_mode(db_file, monkeypatch):
-    """MODE_MEMORY matters: a replaced reader can then be dropped safely.
-
-    With a file-backed mapping, releasing a reader whose file has been replaced
-    risks reading from a mapping that no longer describes the file.
-    """
+@pytest.fixture
+def opened_mode(monkeypatch):
+    """Record the mode each database is opened in."""
     captured = {}
 
     def open_database(path, mode=None):
@@ -107,10 +104,57 @@ def test_opened_in_memory_mode(db_file, monkeypatch):
         return FakeReader()
 
     monkeypatch.setattr(mmdb_module.maxminddb, "open_database", open_database)
+    return captured
+
+
+def test_a_read_only_file_in_the_image_is_shared_between_workers(db_file, opened_mode, monkeypatch):
+    """Each worker process holds its own copy of an in-memory database: with the
+    bundled city database that is ~140 MB per worker. A file that is part of the
+    image cannot change while the engine runs, so it is mapped instead, and every
+    worker reads the same pages.
+    """
+    monkeypatch.setattr(mmdb_module, "_writable", lambda path: False)
 
     MmdbHandle(str(db_file), check_interval=0).reader()
 
-    assert captured["mode"] == mmdb_module.maxminddb.MODE_MEMORY
+    assert opened_mode["mode"] == mmdb_module.maxminddb.MODE_MMAP
+
+
+def test_a_writable_file_is_read_into_memory(db_file, opened_mode, monkeypatch):
+    """A file the engine could see rewritten in place stays in memory mode.
+
+    A mapping reads the file as it is on disk, so a copy over it while the engine
+    runs would hand lookups half-written data, or kill the worker with SIGBUS
+    when the file shrinks. An in-memory copy is unaffected, and a broken
+    replacement is simply refused by the reload check.
+    """
+    monkeypatch.setattr(mmdb_module, "_writable", lambda path: True)
+
+    MmdbHandle(str(db_file), check_interval=0).reader()
+
+    assert opened_mode["mode"] == mmdb_module.maxminddb.MODE_MEMORY
+
+
+def test_a_file_on_another_filesystem_is_read_into_memory(db_file, opened_mode, monkeypatch):
+    """A mounted volume can be rewritten from outside the container, whatever
+    the engine's own permissions on it, so it stays in memory mode."""
+    monkeypatch.setattr(mmdb_module, "_writable", lambda path: False)
+    real_stat = mmdb_module.os.stat
+    db_device = real_stat(db_file).st_dev
+
+    def stat(path, *args, **kwargs):
+        result = real_stat(path, *args, **kwargs)
+        if str(path) == mmdb_module._IMAGE_ANCHOR:
+            fields = list(result)
+            fields[2] = db_device + 1  # st_dev: the engine's code is elsewhere
+            return mmdb_module.os.stat_result(fields)
+        return result
+
+    monkeypatch.setattr(mmdb_module.os, "stat", stat)
+
+    MmdbHandle(str(db_file), check_interval=0).reader()
+
+    assert opened_mode["mode"] == mmdb_module.maxminddb.MODE_MEMORY
 
 
 def test_a_corrupt_database_is_none_rather_than_an_exception(db_file, opener):

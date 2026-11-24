@@ -7,12 +7,19 @@ which is what lets an operator substitute their own database by path.
 
 Two design points worth stating, because both are easy to get wrong:
 
-``MODE_MEMORY``, not the default mmap. The file is read into a buffer, so when a
-replaced database is loaded the previous reader can simply be dropped and
-collected once no lookup still holds it. An mmap-backed reader must never be
-closed underneath an in-flight lookup, and there is no cheap way to know when the
-last one finishes. The cost is holding the file in RAM, which for the ~17 MB we
-ship is a fair trade for not having to reason about that.
+The open mode depends on whether the file can change underneath the engine.
+``MODE_MEMORY`` reads the file into a buffer private to the worker process, so a
+copy over the file while the engine runs cannot touch what lookups read, and a
+half-written replacement is simply refused by the reload check below. The cost is
+one copy per worker: with the bundled city database that is ~140 MB each, so four
+workers hold four copies. A file that is part of the image cannot change while
+the engine runs, so it is mapped (``MODE_MMAP``) instead, and every worker reads
+the same pages. Part of the image means the engine cannot write it and it sits on
+the same filesystem as the engine's own code: a mounted volume is a different
+filesystem and can be rewritten from outside, whatever its permissions here.
+Mapping it would hand lookups half-written data, or kill the worker with SIGBUS
+when the file shrinks. Neither kind of reader is ever closed: a replaced one is
+dropped and collected once no lookup still holds it.
 
 The file is re-``stat``'d at most once per ``IP_DATA_RELOAD_CHECK_SECONDS``, so
 the syscall stays off the per-lookup path. Hot reload matters because an operator
@@ -30,6 +37,24 @@ import time
 import maxminddb
 
 from src.core.config.environment import IP_DATA_RELOAD_CHECK_SECONDS
+
+# A file of the engine's own code: whatever shares its filesystem is in the image.
+_IMAGE_ANCHOR = os.path.abspath(__file__)
+
+
+def _writable(path: str) -> bool:
+    return os.access(path, os.W_OK)
+
+
+def _open_mode(path: str):
+    """MODE_MMAP for a file that is part of the image, MODE_MEMORY otherwise."""
+    try:
+        in_image = os.stat(path).st_dev == os.stat(_IMAGE_ANCHOR).st_dev
+    except OSError:
+        in_image = False
+    if in_image and not _writable(path):
+        return maxminddb.MODE_MMAP
+    return maxminddb.MODE_MEMORY
 
 
 class MmdbHandle:
@@ -92,7 +117,7 @@ class MmdbHandle:
                 return self._reader
 
             try:
-                replacement = maxminddb.open_database(self._path, maxminddb.MODE_MEMORY)
+                replacement = maxminddb.open_database(self._path, _open_mode(self._path))
             except Exception as exc:
                 # A half-written file during a copy lands here. Keep serving the
                 # previous copy rather than losing the signal.
