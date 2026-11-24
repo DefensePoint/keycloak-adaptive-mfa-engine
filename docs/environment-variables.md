@@ -420,10 +420,17 @@ list, which is off by default because its redistribution grant is not establishe
 
 | Variable                    | Default | Description                                                                                                       |
 | --------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
-| `RATE_LIMIT`                | `True`  | Enable or disable rate limiting                                                                                   |
-| `RATE_LIMIT_MAX_REQ`        | `4`     | Maximum `/decision` requests per user and realm per time window                                                   |
+| `RATE_LIMIT`                | `True`  | Enable or disable rate limiting: `true` or `false`                                                                |
+| `RATE_LIMIT_MAX_REQ`        | `30`    | Maximum `/decision` requests per user and realm per time window                                                   |
 | `CONFIG_RATE_LIMIT_MAX_REQ` | `20`    | Maximum settings and scoring writes per realm and calling client per time window (the admin page uses 2 per Save) |
 | `RATE_LIMIT_TIME_WINDOW`    | `60`    | Rate limit time window in seconds                                                                                 |
+
+A `/decision` request over `RATE_LIMIT_MAX_REQ` gets HTTP 429, which the Keycloak
+plugin handles like an engine failure: the login continues at the realm's
+`fallbackRisk` level, without a step-up when that level is 1, or is refused in
+`mandatory` failure mode. Keep the limit well above what one user's logins need.
+`RATE_LIMIT` accepts `true`/`false`, `1`/`0`, `yes`/`no` and `on`/`off`; any
+other value stops the engine at startup.
 
 ## Settings Writes
 

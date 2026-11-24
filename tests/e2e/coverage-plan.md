@@ -106,33 +106,54 @@ chosen side of a boundary, which is a new harness capability.
 
 | Id | Title | Proves | State |
 | --- | --- | --- | --- |
-In `test_familiarity_bands.py`. Two of the four bands turned out to be unreachable, and
-finding out why is the main result of this family.
+In `test_familiarity_bands.py`. The lowering branch was unreachable until the device
+fingerprint was fixed, and finding out why was the main result of this family.
 
 | Id | Title | Proves | State |
 | --- | --- | --- | --- |
-| K01 | An unfamiliar network raises the level | The `c < 0.3` branch, the only one doing work today | **Done** |
-| K02 | A familiar network leaves the score alone | The `0.3 <= c < 0.6` branch, and the other side of K01's boundary | **Done** |
-| K03/K04 | A familiar device can lower the level | **xfail:** neither lowering band is reachable | **Found** |
+| K01 | An unfamiliar network raises the level | The raise, on a known device: a familiar device does not vouch for a new network | **Done** |
+| K02 | A familiar network on an unused device leaves the score alone | The `0.3 <= c < 0.6` branch, and the other side of K01's boundary | **Done** |
+| K03 | A familiar login lowers a scored level | The lowering branch, reached by a time-interval change in a realm that weights it | **Done** |
+| K04 | A clean familiar login is relaxed once, not twice | Familiarity does not lower what the drop-down already relaxed | **Done** |
 | K06 | An allowlisted attribute suppresses the unfamiliar raise | The `whitelisted_vars` guard | **Done** |
-| K07 | Device credibility never leaves its prior | The measurement the xfails rest on, pinned | **Done** |
+| K07 | Device credibility counts its history | The device half agrees with the network half on the same rows | **Done** |
 
-**Device credibility never rises above its 0.2 prior.** Measured on a user whose four
-history rows carry exactly the device hash of the login being scored, the engine logs
+**Device credibility used to stay at its 0.2 prior.** Measured on a user whose four
+history rows carried the device of the login being scored, the engine logged
 `Evaluating device credibility. Number of successes 0 | failures 0 | history 0`, while
-the network half of the same login logs `successes 4 | failures 0 | history 4`. The
-cause is visible in the hashes: one login computes two different device hashes for a
-single context, stores one and looks up credibility with the other, so no history row
-ever matches. The network hash matches exactly and its credibility works.
+the network half of the same login logged `successes 4 | failures 0 | history 4`. The
+cause was the screen size in the device fingerprint: `/decision` rounded it to its
+common bucket only after the history gate, so the first logins of a user stored the
+hash of the raw size and every later login looked up the hash of the rounded one. On a
+screen that is not exactly a common size, such as this suite's 1728x1117 and most
+laptops', those rows never matched. Logins past the gate stored the rounded hash, so
+with the default gate of four logins, device familiarity first counted at a user's
+ninth login, and the four logins before it got none. These tests clone a profile of
+exactly the gate's rows, so for them it never counted.
 
-Since `c = 0.55*device + 0.45*network` and device is pinned at 0.2, the highest
-reachable value is **0.56**, below the 0.6 boundary. So the familiarity adjustment can
-only ever raise risk, never lower it, and a returning user on a known device gets no
-benefit from being recognised.
+With device credibility at 0.2, `c = 0.55*device + 0.45*network` could not pass 0.56,
+below the 0.6 boundary, so the familiarity adjustment could only raise risk. The
+rounding now happens before the gate, so every login stores and looks up the same
+device hash, and `tests/integration/test_device_familiarity.py` holds it on both
+databases. `/auth_context` and the login webhook still hash the raw size: their hashes
+only join an event to the context it was seen with, and nothing compares them with a
+decision's.
 
-That also settles K05. The hazard floor exists to stop familiarity undoing a hazard
-escalation; since familiarity cannot lower anything, the floor guards a branch no login
-reaches. Correct code, currently unreachable, and covered by unit tests only.
+Once device familiarity counted, a known device could have lowered logins it
+should not: the device half alone reaches 0.64, so a login from a new network, Tor
+included, would no longer have been raised, and credential sharing (C01) and a login
+right after a password change (E01) were each lowered a level. So familiarity now
+needs the network too: a network below 0.3 raises whatever the device, and only a
+network of 0.6 or more lets familiarity lower. It lowers by one step, never a clean
+login that the drop-down already relaxed, and never a level raised by
+`concurrent_session`, `impossible_travel` or `recent_account_change`, which say
+someone else may be using the account. Bayesian mode applies the same network rule
+to its familiarity evidence.
+
+That also reopens K05. The hazard floor exists to stop familiarity undoing a hazard
+escalation, and familiarity can lower the level again, so the branch it guards runs.
+It is still covered by unit tests only: reaching it through a login needs a hazard and
+a familiar device at once, which the matrix notes explain is hard to arrange.
 
 One detail worth knowing for anyone writing more of these: the engine only names
 familiarity in its explanation when the adjustment *moves* the level. The middle band
@@ -355,8 +376,6 @@ None is a test problem; each needs a decision first.
 | Case | Decision needed |
 | --- | --- |
 | X05 | Should `login_failure` score `auth_event` rather than `auth_process`, or should a failed step-up emit an event? |
-| K05 | Follows from K03: the hazard floor guards the lowering branch, so it becomes reachable if K03 is fixed |
 | Q03 | Why does the gate return Risk 3 when `DEFAULT_RISK_LEVEL` is 2? |
 | Y-E01 | Should a login immediately after a credential change be challenged in bayesian mode? It is Risk 1 today, and Risk 2 under weight scoring |
 | X02 | Implement `geo_loc` or remove it? It is configurable, weighted, and never evaluated |
-| K03 | Where should the screen resolution be normalised? `/auth_context` hashes the raw value and `/decision` hashes the normalised one, so the two device hashes disagree for any resolution not already canonical |

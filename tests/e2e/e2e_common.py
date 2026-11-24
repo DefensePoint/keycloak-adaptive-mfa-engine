@@ -510,7 +510,7 @@ def _engine_rate_limit(bucket: str) -> tuple[int, float]:
     from the engine container, or the engine's defaults if it can't be."""
     out = _docker("exec", DOCKER_ENGINE, "printenv") or ""
     env = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
-    name, default = ("CONFIG_RATE_LIMIT_MAX_REQ", 20) if bucket == "config" else ("RATE_LIMIT_MAX_REQ", 4)
+    name, default = ("CONFIG_RATE_LIMIT_MAX_REQ", 20) if bucket == "config" else ("RATE_LIMIT_MAX_REQ", 30)
     try:
         return int(env.get(name, default)), float(env.get("RATE_LIMIT_TIME_WINDOW", 60))
     except ValueError:

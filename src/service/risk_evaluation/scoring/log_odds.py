@@ -50,6 +50,32 @@ CREDIBILITY_SCALE = 5.0
 DEVICE_CREDIBILITY_WEIGHT = 0.55
 NET_LOC_CREDIBILITY_WEIGHT = 0.45
 
+# Network credibility below which the network counts as new to the user, and at or
+# above which it counts as familiar; between the two it is partly familiar.
+NETWORK_UNFAMILIAR_BELOW = 0.3
+NETWORK_FAMILIAR_FROM = 0.6
+
+
+def composite_familiarity(device_credibility: float, net_loc_credibility: float) -> float:
+    """Device and network credibility combined, without letting the device vouch
+    for a network the user has not used.
+
+    A familiar device alone would otherwise make a login from a new address, a new
+    country or an anonymiser look trustworthy. On a new network the device is left
+    out and the network's own value is used; on a partly familiar one the result is
+    capped at neutral, so it adds no trust; on a familiar one both count.
+    """
+    combined = (
+        device_credibility * DEVICE_CREDIBILITY_WEIGHT
+        + net_loc_credibility * NET_LOC_CREDIBILITY_WEIGHT
+    )
+    if net_loc_credibility < NETWORK_UNFAMILIAR_BELOW:
+        return net_loc_credibility
+    if net_loc_credibility < NETWORK_FAMILIAR_FROM:
+        return min(combined, 0.5)
+    return combined
+
+
 # Identity / fingerprint parameters. When one of these is enabled and did NOT change,
 # it is treated as a trust signal (mild negative evidence). Behavioural anomaly flags
 # (impossible_travel, anonymous_detection, date_time, ...) are excluded: their absence
@@ -178,9 +204,8 @@ class LogOddsScorer:
             if param not in contributions and param not in self.decision_params:
                 contributions[param] = MAX_RISK_EVIDENCE * self._weight_factor(param)
 
-        composite_credibility = (
-            device_credibility * DEVICE_CREDIBILITY_WEIGHT
-            + net_loc_credibility * NET_LOC_CREDIBILITY_WEIGHT
+        composite_credibility = composite_familiarity(
+            device_credibility, net_loc_credibility
         )
         contributions["__credibility"] = (
             0.5 - composite_credibility
