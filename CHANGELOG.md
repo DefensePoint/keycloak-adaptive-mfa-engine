@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- The engine workers share one copy of the bundled IP databases instead of holding one each. Every worker read the databases into its own memory, about 140 MB per worker with the city database, so 4 workers held 4 copies. A database that is part of the image is now mapped from the file, and every worker reads the same pages: with `WORKERS=4` the engine starts at about 0.63 GB instead of 1.2 GB. A database on a mounted volume, or one the engine's user can write, is still read into memory, because a copy over a mapped file while the engine runs could hand lookups half-written data or stop the worker; hot reload works as before. Most of the remaining memory is per-worker Python libraries (pandas and scikit-learn, about 100 MB per worker).
+
 ### Fixed
 
 - A returning user's device counts as familiar from the first login scored on history. Before, on a screen that is not exactly a common size, such as most laptops', the logins inside the history gate stored the device under the raw screen size and later logins looked it up under the size rounded to its common bucket, so those logins never matched. With the default gate of four logins, device familiarity first counted at the ninth login. The screen size is now rounded before the gate. Device rows stored before the upgrade keep their raw hash and are not counted, and device familiarity needs four matching logins, so an existing user who has not yet had it gets it within their next four logins. `/auth_context` and the login webhook still record the raw size, as the device was reported.
