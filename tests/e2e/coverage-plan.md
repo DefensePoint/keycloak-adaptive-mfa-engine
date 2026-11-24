@@ -26,12 +26,11 @@ implemented. The open ones are listed in the last section.
 
 ### Signal coverage, measured from the committed baseline
 
-18 of 19 signals fire in at least one row. The exceptions:
+17 of 18 signals fire in at least one row. The exception:
 
 | Signal | State | Why |
 | --- | --- | --- |
 | `client` | never fires | No row signs in to a second client |
-| `geo_loc` | disabled | Switched off in the matrix parameter set |
 
 Three more fire only as a **side effect** of another row rather than being driven
 deliberately, so nothing would notice if they silently stopped: `impossible_travel` and
@@ -253,7 +252,7 @@ is deliberate rather than forgotten.
 In `test_realm_parameters.py`. `matrix_params` now takes overrides, so a test states
 only its difference from the matrix set. `disabled` adds to the default set rather than
 replacing it: the first version replaced it, and a test switching off
-`event_cluster_label` silently switched `geo_loc` back on.
+`event_cluster_label` silently switched the matrix's disabled signals back on.
 
 | Id | Title | Proves | State |
 | --- | --- | --- | --- |
@@ -289,24 +288,24 @@ covers those sums in aggregate.
 
 | Id | Title | Proves | State |
 | --- | --- | --- | --- |
-In `test_history_rules.py`, except X02 which needs a parameter change and lives in
-`test_realm_parameters.py`.
+In `test_history_rules.py`.
 
 | Id | Title | Proves | State |
 | --- | --- | --- | --- |
 | X01 | Signing in to a different client fires the `client` signal | The one signal no row touches | **Done** |
-| X02 | Enabling `geo_loc` makes a moved location contribute | **xfail:** the parameter is dead | **Found** |
+| X02 | Enabling `geo_loc` makes a moved location contribute | The parameter was dead | **Retired:** `geo_loc` was removed |
 | X03 | Impossible travel is driven deliberately | Two cities minutes apart, on purpose | **Done** |
 | X04 | An unusual gap between logins fires the time-interval signal | Needs two prior logins, measured | **Done** |
 | X05 | Failed password attempts raise the failure signal | **Blocked:** the signal counts failed step-ups (`F01`), not wrong passwords | Blocked |
 | X06 | Dormancy is asserted near its threshold | 44 and 36 days against a 40-day line | **Done** |
 
-**X02 found a dead parameter.** `geo_loc` ships in `DEFAULT_DECISION_PARAMS` with weight
+**X02 found a dead parameter.** `geo_loc` shipped in `DEFAULT_DECISION_PARAMS` with weight
 3, is exposed for configuration, and is never evaluated: `eval_risk.py` computes each
 signal behind an explicit `if "<name>" in enabled_params` block and there is no such
 block for it. Grepping the engine finds the name in exactly one place, its own default
-entry. Enabling it does nothing, silently. Either implement the signal or drop the
-parameter; if it is dropped, delete the test rather than unmarking it.
+entry. Enabling it did nothing, silently. It was dropped rather than implemented, since
+`country_name`, `geolocation_cluster_label` and `impossible_travel` already score
+location, and the test was deleted with it.
 
 **X04 needed two prior logins, not one.** The check calls the most recent interval
 FORBIDDEN when it is below the *median* of all intervals, so one extra login left the
@@ -378,4 +377,3 @@ None is a test problem; each needs a decision first.
 | X05 | Should `login_failure` also count wrong passwords, the LOGIN_ERROR events stored without an auth process? A failed step-up already counts from plugin 1.1.0 |
 | Q03 | Why does the gate return Risk 3 when `DEFAULT_RISK_LEVEL` is 2? |
 | Y-E01 | Should a login immediately after a credential change be challenged in bayesian mode? It is Risk 1 today, and Risk 2 under weight scoring |
-| X02 | Implement `geo_loc` or remove it? It is configurable, weighted, and never evaluated |

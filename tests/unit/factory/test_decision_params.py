@@ -490,3 +490,70 @@ def test_fill_effective_inactive_days_replaces_a_nonsense_value():
     filled = DecisionParamsFactory._fill_effective_inactive_days(params)
 
     assert filled[0]["inactive_days"] == DEFAULT_INACTIVE_DAYS
+
+
+def _stored_geo_loc(group_id: str) -> dict:
+    return {
+        "group_id": group_id,
+        "realm_id": "acme",
+        "parameter_name": "geo_loc",
+        "weight": 3,
+        "disabled": False,
+        "whitelist": None,
+        "blacklist": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_all_parameters_by_realm_hides_retired_geo_loc(mocker):
+    """Configs saved before geo_loc was retired still hold its row. The
+    settings read must not hand it back, or the next save would resend it."""
+    default_config = SimpleNamespace(
+        id="00000000-0000-0000-0000-000000000005",
+        group_id="default",
+        parameters=[_stored_geo_loc("default")],
+    )
+    group_config = SimpleNamespace(
+        id="00000000-0000-0000-0000-000000000006",
+        group_id="g1",
+        parameters=[_stored_geo_loc("g1")],
+    )
+    mocker.patch(
+        "src.data.repository.DecisionParamsConfigRepository.get_all_active_decision_params_by_realm",
+        return_value=[default_config, group_config],
+    )
+
+    response = await DecisionParamsFactory.get_all_parameters_by_realm(realm="acme")
+
+    assert "geo_loc" not in {p.parameter_name for p in response}
+    assert len(response) == len(DEFAULT_DECISION_PARAMS)
+
+
+@pytest.mark.asyncio
+async def test_decision_path_drops_retired_geo_loc(mocker):
+    """An enabled geo_loc row left in a stored config is not a signal any more,
+    so it must not reach the evaluator as an enabled parameter."""
+    base_config = SimpleNamespace(
+        id="00000000-0000-0000-0000-000000000007",
+        scoring_config=None,
+        parameters=[_stored_geo_loc("default")],
+    )
+    override_config = SimpleNamespace(
+        id="00000000-0000-0000-0000-000000000008",
+        scoring_config=None,
+        parameters=[_stored_geo_loc("g1")],
+    )
+
+    def mock_get_config(realm_id, group_id):
+        return base_config if group_id == "default" else override_config
+
+    mocker.patch(
+        "src.data.repository.DecisionParamsConfigRepository.get_active_decision_params_config",
+        side_effect=mock_get_config,
+    )
+
+    for group_id in ("default", "g1"):
+        resolved = await DecisionParamsFactory.get_active_params_for_realm_group(
+            realm_id="acme", group_id=group_id
+        )
+        assert "geo_loc" not in resolved

@@ -14,7 +14,7 @@ what changed.
 
 ## 1. Why not every combination
 
-The realm has 19 signals, 18 enabled. Treating each as binary is 2^18 = 262,144 rows,
+The realm has 18 signals, all enabled. Treating each as binary is 2^18 = 262,144 rows,
 which at roughly 4 seconds a login is about twelve days of continuous running, and
 several signals have more than two states. A full cartesian product is not a test.
 
@@ -148,7 +148,7 @@ depend on public addresses.
 
 **The suite owns its scoring parameters.** Not a preference. A realm with no parameters
 of its own falls back to `default`/`default`, and `DEFAULT_DECISION_PARAMS` ships with
-all nineteen signals `disabled: True`, so an inherited configuration would produce a
+all eighteen signals `disabled: True`, so an inherited configuration would produce a
 matrix where nothing ever fires and every row reads the same. `matrix_env.py` writes a
 deliberate 1/2/3 weight spread plus the allow and deny entries the override rows need,
 so the expected levels are determined by that file rather than by whatever was last
@@ -196,8 +196,8 @@ followed by `docker restart`, which keeps the writable layer.
 ## 5. Prerequisites the suite must set up
 
 - **`KC_PROXY_HEADERS: xforwarded`** via `config/keycloak/docker-compose.e2e.yml`.
-  Six of the 19 signals are derived from the client IP (`ip_address`, `country_name`,
-  `geo_loc`, `anonymous_detection`, `impossible_travel`,
+  Five of the 18 signals are derived from the client IP (`ip_address`, `country_name`,
+  `anonymous_detection`, `impossible_travel`,
   `geolocation_cluster_label`), so driving them means choosing the IP Keycloak
   reports. The base compose deliberately leaves this unset, because trusting a
   forwarded address with no proxy in front lets any client pick the IP its own risk is

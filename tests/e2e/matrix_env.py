@@ -16,7 +16,7 @@ merging it, removing `fallbackRisk` and breaking every login in that realm.
 **Its own scoring parameters.** The suite writes the weights and allow/deny lists it
 scores against, rather than inheriting them. This is not a preference. A realm with no
 parameters falls back to `default`/`default`, and `DEFAULT_DECISION_PARAMS` ships with
-all nineteen signals `disabled: True`, so an inherited configuration would produce a
+all eighteen signals `disabled: True`, so an inherited configuration would produce a
 matrix where no signal ever fires and every row reads the same. Owning the spec also
 means the expected levels are determined by this file rather than by whatever someone
 last edited in the database, which is what makes a recorded run replayable on another
@@ -97,7 +97,6 @@ MATRIX_WEIGHTS = {
     "date_time": 3,
     "event_cluster_label": 3,
     "recent_account_change": 3,
-    "geo_loc": 3,
 }
 
 MATRIX_LISTS = {
@@ -105,9 +104,10 @@ MATRIX_LISTS = {
     "country_name": {"blacklist": ["KR"], "whitelist": ["IN"]},
 }
 
-# geo_loc is disabled because it is unwired to any check, so enabling it would add a
-# weight-3 signal that can never fire and would silently shift every band.
-MATRIX_DISABLED = {"geo_loc"}
+# Signals the matrix parameter set switches off. Empty: every signal the engine
+# ships is weighted above. Tests switch signals off per realm with the `disabled`
+# override instead.
+MATRIX_DISABLED: set = set()
 
 # Deliberately empty. The shipped realm gives date_time an allow window of 09:00-05:00
 # and a deny window of 10:00-11:30, which makes a run's outcome depend on the clock:
@@ -192,7 +192,7 @@ def preflight() -> dict:
     except Exception as exc:
         problems.append(f"engine /health unreachable at {ENGINE_BASE}: {exc}")
 
-    # X-Forwarded-For has to be trusted or six of the nineteen signals cannot be
+    # X-Forwarded-For has to be trusted or five of the eighteen signals cannot be
     # driven at all, and the rows that depend on them would quietly measure the
     # Docker gateway address instead of the one the row specifies.
     try:
@@ -269,9 +269,9 @@ def matrix_params(realm_id: str = "default", group_id: str = "default",
 
     Everything merges, so a test states only its difference and a change to the matrix
     defaults still reaches it. `disabled` adds rather than replaces on purpose: the
-    first version replaced the set, so a test switching off event_cluster_label
-    silently switched geo_loc back *on* and would have measured a signal it never
-    meant to enable.
+    first version replaced the set, so a test switching off one signal silently
+    switched the matrix's own disabled signals back *on* and would have measured
+    signals it never meant to enable.
     """
     overrides = overrides or {}
     disabled = (set(MATRIX_DISABLED) | set(overrides.get("disabled") or ())) - set(
