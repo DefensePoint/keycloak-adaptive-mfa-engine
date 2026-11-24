@@ -255,3 +255,44 @@ def test_default_param_backfill_carries_inactive_days():
     )
 
     assert shipped["inactive_days"] == DEFAULT_INACTIVE_DAYS
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_realm_params_ignores_retired_geo_loc(mocker):
+    """A caller that still sends geo_loc (a stored config read back before the
+    upgrade, or an old script) must save fine. The retired row is dropped
+    instead of failing the default-group size check, and a group whose only
+    override was geo_loc stores nothing."""
+    mock_repo = mocker.patch(
+        "src.data.repository.decision_params_config.DecisionParamsConfigRepository.activate_decision_params_config",
+        return_value=None,
+    )
+    mocker.patch(
+        "src.data.repository.decision_params_config.DecisionParamsConfigRepository.get_all_active_decision_params_by_realm",
+        return_value=[],
+    )
+    geo_loc = {
+        "realm_id": "default",
+        "parameter_name": "geo_loc",
+        "weight": 3,
+        "disabled": False,
+        "blacklist": None,
+        "whitelist": None,
+    }
+    parameters = [
+        ParameterAssignment(**{**p, "realm_id": "default"})
+        for p in DEFAULT_DECISION_PARAMS
+    ] + [
+        ParameterAssignment(group_id="default", **geo_loc),
+        ParameterAssignment(group_id="g1", **geo_loc),
+    ]
+
+    await ParamsConfigService._ParamsConfigService__update_realm_params(
+        realm_id="default", request=parameters
+    )
+
+    assert mock_repo.call_count == 1
+    assert mock_repo.call_args.kwargs["group_id"] == "default"
+    persisted = mock_repo.call_args.kwargs["parameters"]
+    assert "geo_loc" not in {p["parameter_name"] for p in persisted}
+    assert len(persisted) == len(DEFAULT_DECISION_PARAMS)

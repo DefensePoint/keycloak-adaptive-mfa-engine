@@ -494,7 +494,7 @@ GEOIP_ASN_PATH = os.getenv("GEOIP_ASN_PATH") or os.path.join(
 #
 # It costs ~125 MB of image size for the weakest-accuracy tier of the free data,
 # but without it every address in a country resolves to the same centroid: two of
-# the nineteen signals (impossible_travel, geolocation_cluster_label) then see
+# the eighteen signals (impossible_travel, geolocation_cluster_label) then see
 # zero distance for any intra-country movement, and impossible-travel can only
 # observe cross-border hops.
 #
@@ -691,15 +691,6 @@ DEFAULT_DECISION_PARAMS = [
     {
         "group_id": "default",
         "realm_id": "default",
-        "parameter_name": "geo_loc",
-        "weight": 3,
-        "disabled": True,
-        "blacklist": None,
-        "whitelist": None,
-    },
-    {
-        "group_id": "default",
-        "realm_id": "default",
         "parameter_name": "concurrent_session",
         "weight": 3,
         "disabled": True,
@@ -725,6 +716,13 @@ DEFAULT_DECISION_PARAMS = [
         "whitelist": None,
     },
 ]
+
+# Signals that used to be shipped but are gone. Configs saved before they were
+# removed still carry their rows, so the settings save and both read paths drop
+# these names instead of storing, returning or scoring them. geo_loc could be
+# weighted but was never evaluated; location is scored by country_name,
+# geolocation_cluster_label and impossible_travel.
+RETIRED_DECISION_PARAMS = frozenset({"geo_loc"})
 
 ALLOWED_CLUSTERING_PARAMS = {
     "client",

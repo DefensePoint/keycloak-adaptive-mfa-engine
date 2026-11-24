@@ -10,7 +10,7 @@ hops.
 country data is the most accurate tier of the free databases and is what the
 allow/deny lists consume, while a city database adds ~125 MB to the image for
 coordinates whose free tier is the weakest. The argument against is that it
-degrades two of the nineteen signals. This module supports either.
+degrades two of the eighteen signals. This module supports either.
 
 The table is a data file rather than a Python literal on purpose. It is generated
 at bundle-build time from the licensed source, so the coordinates carry the same

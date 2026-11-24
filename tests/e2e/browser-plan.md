@@ -86,7 +86,7 @@ sending headers: `viewport` and `screen` for the resolution, `locale` for the la
 
 ## 5. The address problem, and its honest resolution
 
-A browser cannot set `X-Forwarded-For`. Six of the nineteen signals are derived from the
+A browser cannot set `X-Forwarded-For`. Five of the eighteen signals are derived from the
 client address, and every geo row in the matrix chooses one that way. Two options:
 
 **Accept the limit.** The browser suite covers no geo signals and every journey runs from
