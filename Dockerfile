@@ -15,7 +15,12 @@
 #
 # This stage needs network access. Only the *runtime* is air-gapped: an isolated
 # site consumes a pre-built image rather than building one in place.
-FROM python:3.11 AS ipdata
+#
+# It runs on the build machine's own platform: its output is data files that do
+# not depend on the architecture, so a multi-platform build (linux/amd64 and
+# linux/arm64) produces them once, natively, instead of once per platform under
+# emulation.
+FROM --platform=$BUILDPLATFORM python:3.11 AS ipdata
 
 WORKDIR /build
 RUN pip install --no-cache-dir maxminddb

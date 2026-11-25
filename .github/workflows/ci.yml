@@ -173,6 +173,76 @@ jobs:
           python -m alembic upgrade head
           python -m pytest tests/integration
 
+  # The image is published for linux/arm64 as well as linux/amd64. This builds
+  # it natively on an arm64 runner and starts it against PostgreSQL and Redis,
+  # so a dependency without an arm64 build, or one that fails at runtime there,
+  # stops a pull request rather than a release.
+  image-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: amfa
+          POSTGRES_PASSWORD: amfa
+          POSTGRES_DB: amfa
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U amfa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the engine image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: amfa-engine:arm64
+          cache-from: type=gha,scope=engine-image-arm64
+          cache-to: type=gha,mode=max,scope=engine-image-arm64
+
+      # Migrations, the bundled IP data, the database and Redis drivers: /health
+      # reports each, so "ok" means the image works on arm64, not just builds.
+      - name: Start it and wait for a healthy engine
+        run: |
+          set -euo pipefail
+          docker run -d --name engine --network host \
+            -e ENGINE_PORT=8080 \
+            -e POSTGRES_HOST=localhost -e POSTGRES_PORT=5432 \
+            -e POSTGRES_USER=amfa -e POSTGRES_PASSWORD=amfa -e POSTGRES_DB=amfa \
+            -e REDIS_HOST=localhost -e REDIS_PORT=6379 \
+            -e OIDC_TRUSTED_BASE_URLS=https://keycloak.invalid \
+            amfa-engine:arm64
+          for _ in $(seq 1 60); do
+            if body=$(curl -sf http://localhost:8080/health); then
+              echo "$body"
+              grep -q '"status":"ok"' <<<"$body"
+              test "$(docker exec engine uname -m)" = aarch64
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Status}}' engine)" = exited ]; then
+              break
+            fi
+            sleep 5
+          done
+          docker logs --tail 100 engine
+          echo "::error::the arm64 image did not become healthy"
+          exit 1
+
   # The image a release would publish, built from this commit and started in the
   # quick start stack (Keycloak with the plugin and admin UI, Postgres, Redis,
   # Mailpit) with the e2e overlay, then tests/e2e against it. Release runs this
