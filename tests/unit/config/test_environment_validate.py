@@ -135,3 +135,40 @@ def test_validate_rejects_a_health_timeout_that_could_never_pass(monkeypatch, va
     monkeypatch.setattr(env, "HEALTH_CHECK_TIMEOUT", value)
     with pytest.raises(RuntimeError, match="HEALTH_CHECK_TIMEOUT"):
         env.validate()
+
+
+def _valid_database_env(monkeypatch):
+    monkeypatch.setattr(env, "POSTGRES_USER", "u")
+    monkeypatch.setattr(env, "POSTGRES_PASSWORD", "p")
+    monkeypatch.setattr(env, "POSTGRES_HOST", "localhost")
+    monkeypatch.setattr(env, "POSTGRES_PORT", "5432")
+    monkeypatch.setattr(env, "DATABASE", "db")
+    monkeypatch.setattr(env, "OIDC_TRUSTED_BASE_URLS", ["https://idp.example.com"])
+
+
+@pytest.mark.parametrize("size", [0, -1])
+def test_validate_rejects_a_postgres_pool_without_a_limit(monkeypatch, size):
+    """SQLAlchemy reads a pool size of 0 as no limit, the opposite of what
+    someone saving connections would mean."""
+    _valid_database_env(monkeypatch)
+    monkeypatch.setattr(env, "POSTGRES_POOL_SIZE", size)
+
+    with pytest.raises(RuntimeError, match="POSTGRES_POOL_SIZE"):
+        env.validate()
+
+
+def test_validate_rejects_an_unlimited_postgres_overflow(monkeypatch):
+    """SQLAlchemy reads an overflow of -1 as no limit."""
+    _valid_database_env(monkeypatch)
+    monkeypatch.setattr(env, "POSTGRES_MAX_OVERFLOW", -1)
+
+    with pytest.raises(RuntimeError, match="POSTGRES_MAX_OVERFLOW"):
+        env.validate()
+
+
+def test_validate_accepts_the_smallest_postgres_pool(monkeypatch):
+    _valid_database_env(monkeypatch)
+    monkeypatch.setattr(env, "POSTGRES_POOL_SIZE", 1)
+    monkeypatch.setattr(env, "POSTGRES_MAX_OVERFLOW", 0)
+
+    env.validate()

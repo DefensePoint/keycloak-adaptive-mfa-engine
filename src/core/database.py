@@ -9,6 +9,8 @@ from src.core.config.environment import (
     HEALTH_CHECK_TIMEOUT,
     MSSQL_MAX_OVERFLOW,
     MSSQL_POOL_SIZE,
+    POSTGRES_MAX_OVERFLOW,
+    POSTGRES_POOL_SIZE,
 )
 
 
@@ -44,6 +46,11 @@ class DatabaseConnection:
                 engine_kwargs["pool_pre_ping"] = True
                 engine_kwargs["pool_size"] = MSSQL_POOL_SIZE
                 engine_kwargs["max_overflow"] = MSSQL_MAX_OVERFLOW
+            else:
+                # Keycloak usually shares this PostgreSQL server, so the engine's
+                # share must leave room for its pool under max_connections.
+                engine_kwargs["pool_size"] = POSTGRES_POOL_SIZE
+                engine_kwargs["max_overflow"] = POSTGRES_MAX_OVERFLOW
             self.engine = create_async_engine(async_url, **engine_kwargs)
             self.Session = async_sessionmaker(
                 bind=self.engine, class_=AsyncSession, expire_on_commit=False
