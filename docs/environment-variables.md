@@ -14,6 +14,8 @@ All variables are read by `src/core/config/environment.py`. Variables without a 
 | `POSTGRES_HOST` | — | Database host |
 | `POSTGRES_PORT` | — | Database port (`5432` for Postgres, `1433` for Azure SQL) |
 | `POSTGRES_DB` | — | Database name |
+| `POSTGRES_POOL_SIZE` | `5` | Connections each worker keeps open on PostgreSQL. At least 1: SQLAlchemy reads 0 as no limit, so the engine refuses to start with it. |
+| `POSTGRES_MAX_OVERFLOW` | `10` | Extra connections each worker can open under load on PostgreSQL. 0 or more: a negative value means no limit, so the engine refuses to start with it. |
 | `MSSQL_ODBC_DRIVER` | `ODBC Driver 18 for SQL Server` | ODBC driver name when `DB_TYPE=mssql` |
 | `MSSQL_ENCRYPT` | `true` | TLS to SQL Server. Leave on for Azure SQL. |
 | `MSSQL_TRUST_SERVER_CERTIFICATE` | `false` | Trust the SQL Server certificate without chain validation. Off for Azure SQL public endpoints. |
@@ -26,6 +28,8 @@ On PostgreSQL the engine's tables call `uuid_generate_v4()`, so the database nee
 That `CREATE EXTENSION` is enough on Docker Postgres and on CloudNativePG when the Database object lists `uuid-ossp`. `uuid-ossp` is a trusted extension, so the role running the migration needs `CREATE` on the database rather than superuser, which is why this works where the application user is not a superuser. Some managed Postgres products (Azure Database for PostgreSQL Flexible Server via `azure.extensions`) reject `CREATE EXTENSION` until the extension is allow-listed at the server. If you are not using the compose stack, confirm that allow-list before the first migration.
 
 On Azure SQL the same migration uses `NEWID()` and `TODATETIMEOFFSET(SYSUTCDATETIME(), 0)`, skips `uuid-ossp`, and stores JSON in `nvarchar`; a later migration stamps `auth_event.event_time` to the microsecond, the precision the engine reads it in. Create an **empty** database (not a Keycloak database) on the SQL server and point `POSTGRES_*` at it with `DB_TYPE=mssql`.
+
+Each worker opens at most `POSTGRES_POOL_SIZE + POSTGRES_MAX_OVERFLOW` PostgreSQL connections, so the default `WORKERS=4` uses at most 60 per engine replica. Keycloak usually shares the server, and its pool grows to 100 connections by default (`KC_DB_POOL_MAX_SIZE`). Keep the sum for every replica and every Keycloak node, plus a few for administration, under the server's `max_connections`, which is 100 by default: past it PostgreSQL refuses new connections, and the engine answers `/decision` with 500, so the login gets the realm's fallback level and no decision is recorded. The compose stacks raise `max_connections` to 200 (single host) and 350 (HA) for that reason. On a server you cannot raise, lower the two settings: a request that cannot get one of its worker's connections waits up to 30 seconds and then fails.
 
 ### Azure SQL / SQL Server setup
 

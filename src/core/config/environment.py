@@ -52,6 +52,11 @@ MSSQL_ENCRYPT = _env_flag("MSSQL_ENCRYPT", True)
 MSSQL_TRUST_SERVER_CERTIFICATE = _env_flag(
     "MSSQL_TRUST_SERVER_CERTIFICATE", False
 )
+# Each worker keeps its own pool, so the engine can hold up to
+# WORKERS x (POSTGRES_POOL_SIZE + POSTGRES_MAX_OVERFLOW) PostgreSQL connections.
+# The defaults are SQLAlchemy's own, which the engine used before these settings.
+POSTGRES_POOL_SIZE = int(os.getenv("POSTGRES_POOL_SIZE") or 5)
+POSTGRES_MAX_OVERFLOW = int(os.getenv("POSTGRES_MAX_OVERFLOW") or 10)
 MSSQL_POOL_SIZE = int(os.getenv("MSSQL_POOL_SIZE") or 2)
 MSSQL_MAX_OVERFLOW = int(os.getenv("MSSQL_MAX_OVERFLOW") or 2)
 # An ODBC `Authentication` value. Empty means SQL login with POSTGRES_USER and
@@ -766,6 +771,20 @@ def validate() -> None:
             "These names are POSTGRES_* for both PostgreSQL and Azure SQL (DB_TYPE=mssql). "
             "Unset values format into the connection string literally, so the failure looks "
             "like a connection error to a host named 'None'."
+        )
+    # SQLAlchemy reads a pool size of 0 and an overflow of -1 as "no limit",
+    # the opposite of what someone lowering them to save connections means.
+    if POSTGRES_POOL_SIZE < 1:
+        raise RuntimeError(
+            f"AMFA cannot start: POSTGRES_POOL_SIZE={POSTGRES_POOL_SIZE} must be at least 1. "
+            "A pool size of 0 means no limit, so each worker could open as many "
+            "PostgreSQL connections as it has requests."
+        )
+    if POSTGRES_MAX_OVERFLOW < 0:
+        raise RuntimeError(
+            f"AMFA cannot start: POSTGRES_MAX_OVERFLOW={POSTGRES_MAX_OVERFLOW} must be 0 or more. "
+            "A negative overflow means no limit, so each worker could open as many "
+            "PostgreSQL connections as it has requests."
         )
     if HEALTH_CHECK_TIMEOUT <= 0:
         raise RuntimeError(

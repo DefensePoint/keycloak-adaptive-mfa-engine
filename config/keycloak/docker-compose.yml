@@ -37,6 +37,12 @@ services:
   # ── PostgreSQL ────────────────────────────────────────────────────────────────
   postgres:
     image: postgres:15-alpine
+    # Keycloak and the engine share this server. The engine can hold
+    # WORKERS x (POSTGRES_POOL_SIZE + POSTGRES_MAX_OVERFLOW) = 4 x 15 = 60
+    # connections and Keycloak's pool up to 100, more than Postgres's default
+    # limit of 100: under load the engine was refused connections and answered
+    # 500. 200 leaves room for both and for admin sessions.
+    command: ["postgres", "-c", "max_connections=200"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Creates the adaptive_mfa database on first start

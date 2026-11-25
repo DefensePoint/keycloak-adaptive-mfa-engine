@@ -134,6 +134,11 @@ services:
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
     image: postgres:15-alpine
+    # Both Keycloak nodes and both engine replicas share this server: 2 x 60
+    # engine connections (WORKERS x (POSTGRES_POOL_SIZE + POSTGRES_MAX_OVERFLOW))
+    # and up to 2 x 100 in Keycloak's pools, far over Postgres's default limit
+    # of 100. 350 leaves room for all four and for admin sessions.
+    command: ["postgres", "-c", "max_connections=350"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
