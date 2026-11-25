@@ -115,9 +115,9 @@ domain its own engine deployment instead.
 
 ### When the engine cannot be reached
 
-Every call to the engine (connection failure, timeout, non-2xx response, or a
-TLS/certificate error alike) is handled the same way, controlled by two realm
-attributes:
+Every failed call to the engine (connection failure, timeout, an error
+response other than 429, or a TLS/certificate error alike) is handled the same
+way, controlled by two realm attributes:
 
 - **`fallbackRisk`** (`1`-`4`): the risk level applied in **advisory** mode
   (see below). Unset, blank, non-numeric, or out of range all resolve to `3`
@@ -147,14 +147,37 @@ realm attribute, `adaptiveAuthEndpoint`, `adaptiveToggle` and `fallbackRisk`
 included, and a realm left in `mandatory` mode without an endpoint denies every
 login.
 
-Whichever mode is active, the resulting Keycloak login event carries a
-`decision_source` detail (`engine` or `fallback`) so a degraded deployment —
-every login silently proceeding at the fallback level because the engine has
-been unreachable since installation, or because of the certificate issue
-below — is visible in the event log rather than indistinguishable from normal
-operation. Failures are also logged with the stable marker
+A 429 answer is not a failure: the engine is up and has refused the request
+because the user went over its `/decision` rate limit. From the plugin release
+after 1.1.0, such a login steps up at the higher of `3` and `fallbackRisk`, in
+both modes. It does not take the fallback level, which at `1` would let anyone
+with the user's password pass MFA by logging in until the engine rate-limits
+that user, and it is not denied, which would let anyone who can spend a user's
+budget lock them out. Plugin 1.1.0 and earlier handle a 429 like any other
+failure.
+
+The resulting Keycloak login event carries a `decision_source` detail saying
+where its risk level came from, so a degraded deployment, with every login
+silently proceeding at the fallback level because the engine has been
+unreachable since installation or because of the certificate issue below, is
+visible in the event log rather than indistinguishable from normal operation:
+
+- `engine`: the engine decided.
+- `fallback`: the engine could not be consulted, and the login proceeded at
+  `fallbackRisk` (advisory mode).
+- `engine_unreachable_denied`: the engine could not be consulted, and the login
+  was denied (mandatory mode). Keycloak stores this `LOGIN_ERROR` without a
+  user id and with the error `invalid_user_credentials`, so search for it by
+  the `username` detail rather than by user.
+- `rate_limited`: the engine answered 429, and the login stepped up as above.
+  From the plugin release after 1.1.0.
+- `amfa_off`: AMFA is switched off for the realm, so the engine was not asked
+  and the login continued at level `1`. From plugin 1.1.0.
+
+Failures are also logged with the stable marker
 `ADAPTIVE_AUTH_ENGINE_UNREACHABLE`, greppable independent of the surrounding
-message text, for log-based alerting.
+message text, for log-based alerting. A rate-limited login is logged as a
+warning without that marker, since the engine is up.
 
 !!! warning "TLS trust for an HTTPS engine endpoint"
     The SPI has no certificate/truststore configuration of its own — every
