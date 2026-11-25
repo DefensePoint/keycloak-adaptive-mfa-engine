@@ -23,6 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The image is published for linux/amd64 and linux/arm64; this runner is
+      # amd64, so the arm64 half is built under emulation.
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
@@ -46,6 +50,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
