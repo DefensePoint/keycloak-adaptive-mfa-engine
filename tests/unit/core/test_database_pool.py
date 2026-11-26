@@ -46,6 +46,16 @@ def test_postgres_pool_defaults_keep_the_old_size():
     assert (database.POSTGRES_POOL_SIZE, database.POSTGRES_MAX_OVERFLOW) == (5, 10)
 
 
+@pytest.mark.parametrize(
+    "url", ["postgresql://u:p@db:5432/amfa", "mssql+aioodbc://u:p@db/amfa"]
+)
+def test_pooled_connections_are_checked_before_use(engines, url):
+    """After a PostgreSQL restart, each dead pooled connection failed one request with 500."""
+    database.DatabaseConnection(url=url)
+
+    assert shared_engine_kwargs(engines)["pool_pre_ping"] is True
+
+
 def test_sql_server_keeps_its_own_pool_settings(engines, monkeypatch):
     monkeypatch.setattr(database, "POSTGRES_POOL_SIZE", 3)
     monkeypatch.setattr(database, "POSTGRES_MAX_OVERFLOW", 4)

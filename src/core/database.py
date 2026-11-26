@@ -37,13 +37,14 @@ class DatabaseConnection:
                 async_url = async_url.replace(
                     "postgresql://", "postgresql+asyncpg://", 1
                 )
-            engine_kwargs = {"future": True}
+            # A database restart or failover leaves dead connections in the
+            # pool. The ping replaces one before a request gets it.
+            engine_kwargs = {"future": True, "pool_pre_ping": True}
             # Azure SQL drops idle connections at 30 minutes. The defaults keep
             # 4 workers × (2 + 2 overflow) = 16 under Basic's 30 concurrent
             # workers and logins. Larger tiers should raise them.
             if async_url.startswith("mssql"):
                 engine_kwargs["pool_recycle"] = 1800
-                engine_kwargs["pool_pre_ping"] = True
                 engine_kwargs["pool_size"] = MSSQL_POOL_SIZE
                 engine_kwargs["max_overflow"] = MSSQL_MAX_OVERFLOW
             else:
