@@ -16,6 +16,10 @@ level and the Keycloak flow decides what to do with it, so a deployment can rout
 tiers differently. The table describes the flow shipped in
 `config/keycloak/test-amfa-realm.json`.
 
+## Hosted demo
+
+A hosted demo of Adaptive MFA is available. You can register a test user in a Keycloak realm protected by Adaptive MFA, change the realm's Adaptive MFA settings in the admin console with a shared realm admin login, and follow the logins in the Keycloak Monitoring Tool. The logins and what to try are in the [hosted demo section of the Keycloak Monitoring Tool README](https://github.com/DefensePoint/keycloak-monitoring#hosted-demo).
+
 ## Why AMFA
 
 Adaptive authentication is a statistical problem, not a language problem. It means scoring
